@@ -1,0 +1,7 @@
+{
+  "status": "passed",
+  "scope": "Actual software-Vulkan overflow negative test",
+  "heapCapacity": 8,
+  "fightStatus": 2,
+  "acceptedResultWritten": false
+}

@@ -1,0 +1,6 @@
+{
+  "status": "passed",
+  "scope": "Actual Vulkan capability rejection on llvmpipe (supports width 8 only)",
+  "requestedSubgroupSize": 32,
+  "silentlyFellBack": false
+}

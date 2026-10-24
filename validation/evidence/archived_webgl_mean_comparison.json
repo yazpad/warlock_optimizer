@@ -1,0 +1,36 @@
+{
+  "scope": "Saved means only; not per-fight/counter/RNG parity",
+  "suiteHash": "edd2627f45bc5a66099bc05998e9786273c68480662569d5a54ee0b253c602eb",
+  "rows": [
+    {
+      "id": "sm_ruin__human__baseline",
+      "archivedWebglMean": 652.0206906684024,
+      "headlessVulkanMean": 652.0206955295139,
+      "deltaDps": 4.8611115062158206e-06
+    },
+    {
+      "id": "aff_wrack__human__baseline",
+      "archivedWebglMean": 559.566126953125,
+      "headlessVulkanMean": 559.5661279947917,
+      "deltaDps": 1.0416666782475659e-06
+    },
+    {
+      "id": "destro__human__baseline",
+      "archivedWebglMean": 645.6061431423617,
+      "headlessVulkanMean": 645.6061398871527,
+      "deltaDps": -3.255208980590396e-06
+    },
+    {
+      "id": "demo_shadow_brand__human__baseline",
+      "archivedWebglMean": 715.991024262154,
+      "headlessVulkanMean": 716.0072427951388,
+      "deltaDps": 0.016218532984794365
+    },
+    {
+      "id": "demo_fire_brand__human__baseline",
+      "archivedWebglMean": 754.1780293836802,
+      "headlessVulkanMean": 754.1780326388889,
+      "deltaDps": 3.2552087532167207e-06
+    }
+  ]
+}

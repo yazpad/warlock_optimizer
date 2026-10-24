@@ -1,0 +1,1279 @@
+{
+  "status": "passed-replay",
+  "targetParityMaeDps": 1,
+  "parityNote": "Do not weaken parity to gain speed. Exact replay preserves the generic baseline; accepted Forever parity remains a separate gate.",
+  "measurements": [
+    {
+      "variant": "generic",
+      "file": "artifacts/wave32/01-generic.json",
+      "timing": {
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "deviceType": 2,
+        "compileMs": 0.325,
+        "executeReadbackMs": 1887.833,
+        "draws": 16,
+        "totalFights": 1000000,
+        "warmupBatches": 2,
+        "warmupMs": 269.107,
+        "gpuComputeMs": 1870.70684,
+        "requiredSubgroupSize": 0,
+        "wallMs": 2212.549812999896,
+        "buildMs": 0.014740000096935546,
+        "shaderCompileMs": 0.09331100000053993,
+        "probeWallMs": 2211.8067880001036,
+        "decodeSummaryMs": 10.701029999884865,
+        "gpuSimsPerSecond": 534557.3013460516,
+        "batchSize": 65536,
+        "dispatchReadbackSimsPerSecond": 529707.8714059982,
+        "endToEndSimsPerSecond": 451967.2253815363
+      },
+      "optimization": {
+        "variant": "generic",
+        "features": {},
+        "genericShaderHash": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+        "actualShaderHash": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+        "pipelineStatistics": {
+          "available": true,
+          "executables": [
+            {
+              "name": "compute",
+              "subgroupSize": 64,
+              "statistics": [
+                {
+                  "name": "Driver pipeline hash",
+                  "description": "Driver pipeline hash used by RGP",
+                  "value": 11715712286802940940
+                },
+                {
+                  "name": "SGPRs",
+                  "description": "Number of SGPR registers allocated per subgroup",
+                  "value": 128
+                },
+                {
+                  "name": "VGPRs",
+                  "description": "Number of VGPR registers allocated per subgroup",
+                  "value": 256
+                },
+                {
+                  "name": "Spilled SGPRs",
+                  "description": "Number of SGPR registers spilled per subgroup",
+                  "value": 982
+                },
+                {
+                  "name": "Spilled VGPRs",
+                  "description": "Number of VGPR registers spilled per subgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Code size",
+                  "description": "Code size in bytes",
+                  "value": 237656
+                },
+                {
+                  "name": "LDS size",
+                  "description": "LDS size in bytes per workgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Scratch size",
+                  "description": "Private memory in bytes per subgroup",
+                  "value": 20480
+                },
+                {
+                  "name": "Subgroups per SIMD",
+                  "description": "The maximum number of subgroups in flight on a SIMD unit",
+                  "value": 4
+                },
+                {
+                  "name": "Combined inputs",
+                  "description": "Number of input slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Combined outputs",
+                  "description": "Number of output slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Hash",
+                  "description": "CRC32 hash of code and constant data",
+                  "value": 1285797409
+                },
+                {
+                  "name": "Instructions",
+                  "description": "Instruction count",
+                  "value": 44343
+                },
+                {
+                  "name": "Copies",
+                  "description": "Copy instructions created for pseudo-instructions",
+                  "value": 6787
+                },
+                {
+                  "name": "Branches",
+                  "description": "Branch instructions",
+                  "value": 2671
+                },
+                {
+                  "name": "Latency",
+                  "description": "Issue cycles plus stall cycles",
+                  "value": 195784
+                },
+                {
+                  "name": "Inverse Throughput",
+                  "description": "Estimated busy cycles to execute one wave",
+                  "value": 97892
+                },
+                {
+                  "name": "VMEM Clause",
+                  "description": "Number of VMEM clauses (includes 1-sized clauses)",
+                  "value": 944
+                },
+                {
+                  "name": "SMEM Clause",
+                  "description": "Number of SMEM clauses (includes 1-sized clauses)",
+                  "value": 9
+                },
+                {
+                  "name": "Pre-Sched SGPRs",
+                  "description": "SGPR usage before scheduling",
+                  "value": 254
+                },
+                {
+                  "name": "Pre-Sched VGPRs",
+                  "description": "VGPR usage before scheduling",
+                  "value": 196
+                },
+                {
+                  "name": "VALU",
+                  "description": "Number of VALU instructions",
+                  "value": 25593
+                },
+                {
+                  "name": "SALU",
+                  "description": "Number of SALU instructions",
+                  "value": 13859
+                },
+                {
+                  "name": "VMEM",
+                  "description": "Number of VMEM instructions",
+                  "value": 967
+                },
+                {
+                  "name": "SMEM",
+                  "description": "Number of SMEM instructions",
+                  "value": 10
+                },
+                {
+                  "name": "VOPD",
+                  "description": "Number of VOPD instructions",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        },
+        "requiredSubgroupSize": null,
+        "heapCapacity": 40,
+        "signature": "d9804d7430af02a95e66d3899633cbd6536a84123150e32ded5262775f26c26c"
+      },
+      "runtime": {
+        "backend": "Vulkan",
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "software": false,
+        "transport": "headless C diagnostic; L\u00d6VE integration unverified"
+      }
+    },
+    {
+      "variant": "shared-features",
+      "file": "artifacts/wave32/02-shared-features.json",
+      "timing": {
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "deviceType": 2,
+        "compileMs": 0.122,
+        "executeReadbackMs": 805.161,
+        "draws": 16,
+        "totalFights": 1000000,
+        "warmupBatches": 2,
+        "warmupMs": 118.15,
+        "gpuComputeMs": 791.77352,
+        "requiredSubgroupSize": 0,
+        "wallMs": 972.9159520002213,
+        "buildMs": 0.02133999987563584,
+        "shaderCompileMs": 0.09870099984254921,
+        "probeWallMs": 972.1092059999137,
+        "decodeSummaryMs": 10.225910000022093,
+        "gpuSimsPerSecond": 1262987.4260003038,
+        "batchSize": 65536,
+        "dispatchReadbackSimsPerSecond": 1241987.6273192568,
+        "endToEndSimsPerSecond": 1027838.0141101567
+      },
+      "optimization": {
+        "variant": "shared-features",
+        "features": {
+          "externalElements": 0,
+          "assignedElements": 0,
+          "demonicRune": 0,
+          "ezThroDynamite": 0,
+          "manualTrinket": 0,
+          "judgementOfWisdom": 0,
+          "giftOfArthas": 0,
+          "autoCooldowns": 1,
+          "race": 0,
+          "racialPolicy": 0,
+          "targetIsBeast": 0,
+          "filler": 0,
+          "corr": 1,
+          "agony": 1,
+          "immolate": 1,
+          "baneRank": 5,
+          "charges": 0,
+          "partial": 1,
+          "piercing": 1,
+          "felDomination": 0
+        },
+        "genericShaderHash": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+        "actualShaderHash": "08b10b7b5dec13c085c5c12c14492ce00255aacbc83b85910892d49bed00d5dc",
+        "pipelineStatistics": {
+          "available": true,
+          "executables": [
+            {
+              "name": "compute",
+              "subgroupSize": 64,
+              "statistics": [
+                {
+                  "name": "Driver pipeline hash",
+                  "description": "Driver pipeline hash used by RGP",
+                  "value": 2717978554669919596
+                },
+                {
+                  "name": "SGPRs",
+                  "description": "Number of SGPR registers allocated per subgroup",
+                  "value": 128
+                },
+                {
+                  "name": "VGPRs",
+                  "description": "Number of VGPR registers allocated per subgroup",
+                  "value": 168
+                },
+                {
+                  "name": "Spilled SGPRs",
+                  "description": "Number of SGPR registers spilled per subgroup",
+                  "value": 78
+                },
+                {
+                  "name": "Spilled VGPRs",
+                  "description": "Number of VGPR registers spilled per subgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Code size",
+                  "description": "Code size in bytes",
+                  "value": 55808
+                },
+                {
+                  "name": "LDS size",
+                  "description": "LDS size in bytes per workgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Scratch size",
+                  "description": "Private memory in bytes per subgroup",
+                  "value": 20480
+                },
+                {
+                  "name": "Subgroups per SIMD",
+                  "description": "The maximum number of subgroups in flight on a SIMD unit",
+                  "value": 6
+                },
+                {
+                  "name": "Combined inputs",
+                  "description": "Number of input slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Combined outputs",
+                  "description": "Number of output slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Hash",
+                  "description": "CRC32 hash of code and constant data",
+                  "value": 2886480072
+                },
+                {
+                  "name": "Instructions",
+                  "description": "Instruction count",
+                  "value": 10725
+                },
+                {
+                  "name": "Copies",
+                  "description": "Copy instructions created for pseudo-instructions",
+                  "value": 1779
+                },
+                {
+                  "name": "Branches",
+                  "description": "Branch instructions",
+                  "value": 636
+                },
+                {
+                  "name": "Latency",
+                  "description": "Issue cycles plus stall cycles",
+                  "value": 105537
+                },
+                {
+                  "name": "Inverse Throughput",
+                  "description": "Estimated busy cycles to execute one wave",
+                  "value": 35179
+                },
+                {
+                  "name": "VMEM Clause",
+                  "description": "Number of VMEM clauses (includes 1-sized clauses)",
+                  "value": 243
+                },
+                {
+                  "name": "SMEM Clause",
+                  "description": "Number of SMEM clauses (includes 1-sized clauses)",
+                  "value": 9
+                },
+                {
+                  "name": "Pre-Sched SGPRs",
+                  "description": "SGPR usage before scheduling",
+                  "value": 181
+                },
+                {
+                  "name": "Pre-Sched VGPRs",
+                  "description": "VGPR usage before scheduling",
+                  "value": 159
+                },
+                {
+                  "name": "VALU",
+                  "description": "Number of VALU instructions",
+                  "value": 6461
+                },
+                {
+                  "name": "SALU",
+                  "description": "Number of SALU instructions",
+                  "value": 2953
+                },
+                {
+                  "name": "VMEM",
+                  "description": "Number of VMEM instructions",
+                  "value": 260
+                },
+                {
+                  "name": "SMEM",
+                  "description": "Number of SMEM instructions",
+                  "value": 10
+                },
+                {
+                  "name": "VOPD",
+                  "description": "Number of VOPD instructions",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        },
+        "requiredSubgroupSize": null,
+        "heapCapacity": 40,
+        "signature": "22ef4cbdacbfd2396622b5e2cc8f270f4b30e35609dfb65739b2ac15fcceafdf"
+      },
+      "runtime": {
+        "backend": "Vulkan",
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "software": false,
+        "transport": "headless C diagnostic; L\u00d6VE integration unverified"
+      }
+    },
+    {
+      "variant": "shared-features-wave32",
+      "file": "artifacts/wave32/03-shared-features-wave32.json",
+      "timing": {
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "deviceType": 2,
+        "compileMs": 0.122,
+        "executeReadbackMs": 651.124,
+        "draws": 16,
+        "totalFights": 1000000,
+        "warmupBatches": 2,
+        "warmupMs": 98.972,
+        "gpuComputeMs": 639.42812,
+        "requiredSubgroupSize": 32,
+        "wallMs": 797.1938670002601,
+        "buildMs": 0.012059999789926223,
+        "shaderCompileMs": 0.08583099997849786,
+        "probeWallMs": 796.5675929999634,
+        "decodeSummaryMs": 10.506730999979888,
+        "gpuSimsPerSecond": 1563897.4401063249,
+        "batchSize": 65536,
+        "dispatchReadbackSimsPerSecond": 1535805.7758583617,
+        "endToEndSimsPerSecond": 1254400.0166018258
+      },
+      "optimization": {
+        "variant": "shared-features",
+        "features": {
+          "externalElements": 0,
+          "assignedElements": 0,
+          "demonicRune": 0,
+          "ezThroDynamite": 0,
+          "manualTrinket": 0,
+          "judgementOfWisdom": 0,
+          "giftOfArthas": 0,
+          "autoCooldowns": 1,
+          "race": 0,
+          "racialPolicy": 0,
+          "targetIsBeast": 0,
+          "filler": 0,
+          "corr": 1,
+          "agony": 1,
+          "immolate": 1,
+          "baneRank": 5,
+          "charges": 0,
+          "partial": 1,
+          "piercing": 1,
+          "felDomination": 0
+        },
+        "genericShaderHash": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+        "actualShaderHash": "08b10b7b5dec13c085c5c12c14492ce00255aacbc83b85910892d49bed00d5dc",
+        "pipelineStatistics": {
+          "available": true,
+          "executables": [
+            {
+              "name": "compute",
+              "subgroupSize": 32,
+              "statistics": [
+                {
+                  "name": "Driver pipeline hash",
+                  "description": "Driver pipeline hash used by RGP",
+                  "value": 12989582002441302696
+                },
+                {
+                  "name": "SGPRs",
+                  "description": "Number of SGPR registers allocated per subgroup",
+                  "value": 128
+                },
+                {
+                  "name": "VGPRs",
+                  "description": "Number of VGPR registers allocated per subgroup",
+                  "value": 168
+                },
+                {
+                  "name": "Spilled SGPRs",
+                  "description": "Number of SGPR registers spilled per subgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Spilled VGPRs",
+                  "description": "Number of VGPR registers spilled per subgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Code size",
+                  "description": "Code size in bytes",
+                  "value": 52612
+                },
+                {
+                  "name": "LDS size",
+                  "description": "LDS size in bytes per workgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Scratch size",
+                  "description": "Private memory in bytes per subgroup",
+                  "value": 10240
+                },
+                {
+                  "name": "Subgroups per SIMD",
+                  "description": "The maximum number of subgroups in flight on a SIMD unit",
+                  "value": 6
+                },
+                {
+                  "name": "Combined inputs",
+                  "description": "Number of input slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Combined outputs",
+                  "description": "Number of output slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Hash",
+                  "description": "CRC32 hash of code and constant data",
+                  "value": 1207782270
+                },
+                {
+                  "name": "Instructions",
+                  "description": "Instruction count",
+                  "value": 10011
+                },
+                {
+                  "name": "Copies",
+                  "description": "Copy instructions created for pseudo-instructions",
+                  "value": 1483
+                },
+                {
+                  "name": "Branches",
+                  "description": "Branch instructions",
+                  "value": 592
+                },
+                {
+                  "name": "Latency",
+                  "description": "Issue cycles plus stall cycles",
+                  "value": 96252
+                },
+                {
+                  "name": "Inverse Throughput",
+                  "description": "Estimated busy cycles to execute one wave",
+                  "value": 32084
+                },
+                {
+                  "name": "VMEM Clause",
+                  "description": "Number of VMEM clauses (includes 1-sized clauses)",
+                  "value": 242
+                },
+                {
+                  "name": "SMEM Clause",
+                  "description": "Number of SMEM clauses (includes 1-sized clauses)",
+                  "value": 9
+                },
+                {
+                  "name": "Pre-Sched SGPRs",
+                  "description": "SGPR usage before scheduling",
+                  "value": 96
+                },
+                {
+                  "name": "Pre-Sched VGPRs",
+                  "description": "VGPR usage before scheduling",
+                  "value": 159
+                },
+                {
+                  "name": "VALU",
+                  "description": "Number of VALU instructions",
+                  "value": 6046
+                },
+                {
+                  "name": "SALU",
+                  "description": "Number of SALU instructions",
+                  "value": 2706
+                },
+                {
+                  "name": "VMEM",
+                  "description": "Number of VMEM instructions",
+                  "value": 260
+                },
+                {
+                  "name": "SMEM",
+                  "description": "Number of SMEM instructions",
+                  "value": 10
+                },
+                {
+                  "name": "VOPD",
+                  "description": "Number of VOPD instructions",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        },
+        "requiredSubgroupSize": 32,
+        "heapCapacity": 40,
+        "signature": "5c23b348649596f6d859593f9d3ec1a0a62fa20b96f10fc3c1dc0e94ebfbf0b0"
+      },
+      "runtime": {
+        "backend": "Vulkan",
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "software": false,
+        "transport": "headless C diagnostic; L\u00d6VE integration unverified"
+      }
+    },
+    {
+      "variant": "shared-features-wave32",
+      "file": "artifacts/wave32/04-shared-features-wave32.json",
+      "timing": {
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "deviceType": 2,
+        "compileMs": 0.119,
+        "executeReadbackMs": 651.771,
+        "draws": 16,
+        "totalFights": 1000000,
+        "warmupBatches": 2,
+        "warmupMs": 98.452,
+        "gpuComputeMs": 640.25944,
+        "requiredSubgroupSize": 32,
+        "wallMs": 797.7761600000122,
+        "buildMs": 0.012619999779417412,
+        "shaderCompileMs": 0.07091099996614503,
+        "probeWallMs": 797.1682659999715,
+        "decodeSummaryMs": 9.30491999991634,
+        "gpuSimsPerSecond": 1561866.858222348,
+        "batchSize": 65536,
+        "dispatchReadbackSimsPerSecond": 1534281.2122662715,
+        "endToEndSimsPerSecond": 1253484.4360352717
+      },
+      "optimization": {
+        "variant": "shared-features",
+        "features": {
+          "externalElements": 0,
+          "assignedElements": 0,
+          "demonicRune": 0,
+          "ezThroDynamite": 0,
+          "manualTrinket": 0,
+          "judgementOfWisdom": 0,
+          "giftOfArthas": 0,
+          "autoCooldowns": 1,
+          "race": 0,
+          "racialPolicy": 0,
+          "targetIsBeast": 0,
+          "filler": 0,
+          "corr": 1,
+          "agony": 1,
+          "immolate": 1,
+          "baneRank": 5,
+          "charges": 0,
+          "partial": 1,
+          "piercing": 1,
+          "felDomination": 0
+        },
+        "genericShaderHash": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+        "actualShaderHash": "08b10b7b5dec13c085c5c12c14492ce00255aacbc83b85910892d49bed00d5dc",
+        "pipelineStatistics": {
+          "available": true,
+          "executables": [
+            {
+              "name": "compute",
+              "subgroupSize": 32,
+              "statistics": [
+                {
+                  "name": "Driver pipeline hash",
+                  "description": "Driver pipeline hash used by RGP",
+                  "value": 12989582002441302696
+                },
+                {
+                  "name": "SGPRs",
+                  "description": "Number of SGPR registers allocated per subgroup",
+                  "value": 128
+                },
+                {
+                  "name": "VGPRs",
+                  "description": "Number of VGPR registers allocated per subgroup",
+                  "value": 168
+                },
+                {
+                  "name": "Spilled SGPRs",
+                  "description": "Number of SGPR registers spilled per subgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Spilled VGPRs",
+                  "description": "Number of VGPR registers spilled per subgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Code size",
+                  "description": "Code size in bytes",
+                  "value": 52612
+                },
+                {
+                  "name": "LDS size",
+                  "description": "LDS size in bytes per workgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Scratch size",
+                  "description": "Private memory in bytes per subgroup",
+                  "value": 10240
+                },
+                {
+                  "name": "Subgroups per SIMD",
+                  "description": "The maximum number of subgroups in flight on a SIMD unit",
+                  "value": 6
+                },
+                {
+                  "name": "Combined inputs",
+                  "description": "Number of input slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Combined outputs",
+                  "description": "Number of output slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Hash",
+                  "description": "CRC32 hash of code and constant data",
+                  "value": 1207782270
+                },
+                {
+                  "name": "Instructions",
+                  "description": "Instruction count",
+                  "value": 10011
+                },
+                {
+                  "name": "Copies",
+                  "description": "Copy instructions created for pseudo-instructions",
+                  "value": 1483
+                },
+                {
+                  "name": "Branches",
+                  "description": "Branch instructions",
+                  "value": 592
+                },
+                {
+                  "name": "Latency",
+                  "description": "Issue cycles plus stall cycles",
+                  "value": 96252
+                },
+                {
+                  "name": "Inverse Throughput",
+                  "description": "Estimated busy cycles to execute one wave",
+                  "value": 32084
+                },
+                {
+                  "name": "VMEM Clause",
+                  "description": "Number of VMEM clauses (includes 1-sized clauses)",
+                  "value": 242
+                },
+                {
+                  "name": "SMEM Clause",
+                  "description": "Number of SMEM clauses (includes 1-sized clauses)",
+                  "value": 9
+                },
+                {
+                  "name": "Pre-Sched SGPRs",
+                  "description": "SGPR usage before scheduling",
+                  "value": 96
+                },
+                {
+                  "name": "Pre-Sched VGPRs",
+                  "description": "VGPR usage before scheduling",
+                  "value": 159
+                },
+                {
+                  "name": "VALU",
+                  "description": "Number of VALU instructions",
+                  "value": 6046
+                },
+                {
+                  "name": "SALU",
+                  "description": "Number of SALU instructions",
+                  "value": 2706
+                },
+                {
+                  "name": "VMEM",
+                  "description": "Number of VMEM instructions",
+                  "value": 260
+                },
+                {
+                  "name": "SMEM",
+                  "description": "Number of SMEM instructions",
+                  "value": 10
+                },
+                {
+                  "name": "VOPD",
+                  "description": "Number of VOPD instructions",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        },
+        "requiredSubgroupSize": 32,
+        "heapCapacity": 40,
+        "signature": "5c23b348649596f6d859593f9d3ec1a0a62fa20b96f10fc3c1dc0e94ebfbf0b0"
+      },
+      "runtime": {
+        "backend": "Vulkan",
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "software": false,
+        "transport": "headless C diagnostic; L\u00d6VE integration unverified"
+      }
+    },
+    {
+      "variant": "shared-features",
+      "file": "artifacts/wave32/05-shared-features.json",
+      "timing": {
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "deviceType": 2,
+        "compileMs": 0.125,
+        "executeReadbackMs": 807.096,
+        "draws": 16,
+        "totalFights": 1000000,
+        "warmupBatches": 2,
+        "warmupMs": 117.824,
+        "gpuComputeMs": 792.7306,
+        "requiredSubgroupSize": 0,
+        "wallMs": 973.7611379996451,
+        "buildMs": 0.012649999916902743,
+        "shaderCompileMs": 0.07272099992405856,
+        "probeWallMs": 973.1102830000964,
+        "decodeSummaryMs": 9.92543999999031,
+        "gpuSimsPerSecond": 1261462.5952372723,
+        "batchSize": 65536,
+        "dispatchReadbackSimsPerSecond": 1239009.9814644107,
+        "endToEndSimsPerSecond": 1026945.8915296786
+      },
+      "optimization": {
+        "variant": "shared-features",
+        "features": {
+          "externalElements": 0,
+          "assignedElements": 0,
+          "demonicRune": 0,
+          "ezThroDynamite": 0,
+          "manualTrinket": 0,
+          "judgementOfWisdom": 0,
+          "giftOfArthas": 0,
+          "autoCooldowns": 1,
+          "race": 0,
+          "racialPolicy": 0,
+          "targetIsBeast": 0,
+          "filler": 0,
+          "corr": 1,
+          "agony": 1,
+          "immolate": 1,
+          "baneRank": 5,
+          "charges": 0,
+          "partial": 1,
+          "piercing": 1,
+          "felDomination": 0
+        },
+        "genericShaderHash": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+        "actualShaderHash": "08b10b7b5dec13c085c5c12c14492ce00255aacbc83b85910892d49bed00d5dc",
+        "pipelineStatistics": {
+          "available": true,
+          "executables": [
+            {
+              "name": "compute",
+              "subgroupSize": 64,
+              "statistics": [
+                {
+                  "name": "Driver pipeline hash",
+                  "description": "Driver pipeline hash used by RGP",
+                  "value": 2717978554669919596
+                },
+                {
+                  "name": "SGPRs",
+                  "description": "Number of SGPR registers allocated per subgroup",
+                  "value": 128
+                },
+                {
+                  "name": "VGPRs",
+                  "description": "Number of VGPR registers allocated per subgroup",
+                  "value": 168
+                },
+                {
+                  "name": "Spilled SGPRs",
+                  "description": "Number of SGPR registers spilled per subgroup",
+                  "value": 78
+                },
+                {
+                  "name": "Spilled VGPRs",
+                  "description": "Number of VGPR registers spilled per subgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Code size",
+                  "description": "Code size in bytes",
+                  "value": 55808
+                },
+                {
+                  "name": "LDS size",
+                  "description": "LDS size in bytes per workgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Scratch size",
+                  "description": "Private memory in bytes per subgroup",
+                  "value": 20480
+                },
+                {
+                  "name": "Subgroups per SIMD",
+                  "description": "The maximum number of subgroups in flight on a SIMD unit",
+                  "value": 6
+                },
+                {
+                  "name": "Combined inputs",
+                  "description": "Number of input slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Combined outputs",
+                  "description": "Number of output slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Hash",
+                  "description": "CRC32 hash of code and constant data",
+                  "value": 2886480072
+                },
+                {
+                  "name": "Instructions",
+                  "description": "Instruction count",
+                  "value": 10725
+                },
+                {
+                  "name": "Copies",
+                  "description": "Copy instructions created for pseudo-instructions",
+                  "value": 1779
+                },
+                {
+                  "name": "Branches",
+                  "description": "Branch instructions",
+                  "value": 636
+                },
+                {
+                  "name": "Latency",
+                  "description": "Issue cycles plus stall cycles",
+                  "value": 105537
+                },
+                {
+                  "name": "Inverse Throughput",
+                  "description": "Estimated busy cycles to execute one wave",
+                  "value": 35179
+                },
+                {
+                  "name": "VMEM Clause",
+                  "description": "Number of VMEM clauses (includes 1-sized clauses)",
+                  "value": 243
+                },
+                {
+                  "name": "SMEM Clause",
+                  "description": "Number of SMEM clauses (includes 1-sized clauses)",
+                  "value": 9
+                },
+                {
+                  "name": "Pre-Sched SGPRs",
+                  "description": "SGPR usage before scheduling",
+                  "value": 181
+                },
+                {
+                  "name": "Pre-Sched VGPRs",
+                  "description": "VGPR usage before scheduling",
+                  "value": 159
+                },
+                {
+                  "name": "VALU",
+                  "description": "Number of VALU instructions",
+                  "value": 6461
+                },
+                {
+                  "name": "SALU",
+                  "description": "Number of SALU instructions",
+                  "value": 2953
+                },
+                {
+                  "name": "VMEM",
+                  "description": "Number of VMEM instructions",
+                  "value": 260
+                },
+                {
+                  "name": "SMEM",
+                  "description": "Number of SMEM instructions",
+                  "value": 10
+                },
+                {
+                  "name": "VOPD",
+                  "description": "Number of VOPD instructions",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        },
+        "requiredSubgroupSize": null,
+        "heapCapacity": 40,
+        "signature": "22ef4cbdacbfd2396622b5e2cc8f270f4b30e35609dfb65739b2ac15fcceafdf"
+      },
+      "runtime": {
+        "backend": "Vulkan",
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "software": false,
+        "transport": "headless C diagnostic; L\u00d6VE integration unverified"
+      }
+    },
+    {
+      "variant": "generic",
+      "file": "artifacts/wave32/06-generic.json",
+      "timing": {
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "deviceType": 2,
+        "compileMs": 0.278,
+        "executeReadbackMs": 1883.504,
+        "draws": 16,
+        "totalFights": 1000000,
+        "warmupBatches": 2,
+        "warmupMs": 276.639,
+        "gpuComputeMs": 1861.74288,
+        "requiredSubgroupSize": 0,
+        "wallMs": 2208.9908379998633,
+        "buildMs": 0.02275099996040808,
+        "shaderCompileMs": 0.13710100029129535,
+        "probeWallMs": 2207.903200000146,
+        "decodeSummaryMs": 10.616820000286708,
+        "gpuSimsPerSecond": 537131.0994351701,
+        "batchSize": 65536,
+        "dispatchReadbackSimsPerSecond": 530925.3391551067,
+        "endToEndSimsPerSecond": 452695.40407213854
+      },
+      "optimization": {
+        "variant": "generic",
+        "features": {},
+        "genericShaderHash": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+        "actualShaderHash": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+        "pipelineStatistics": {
+          "available": true,
+          "executables": [
+            {
+              "name": "compute",
+              "subgroupSize": 64,
+              "statistics": [
+                {
+                  "name": "Driver pipeline hash",
+                  "description": "Driver pipeline hash used by RGP",
+                  "value": 11715712286802940940
+                },
+                {
+                  "name": "SGPRs",
+                  "description": "Number of SGPR registers allocated per subgroup",
+                  "value": 128
+                },
+                {
+                  "name": "VGPRs",
+                  "description": "Number of VGPR registers allocated per subgroup",
+                  "value": 256
+                },
+                {
+                  "name": "Spilled SGPRs",
+                  "description": "Number of SGPR registers spilled per subgroup",
+                  "value": 982
+                },
+                {
+                  "name": "Spilled VGPRs",
+                  "description": "Number of VGPR registers spilled per subgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Code size",
+                  "description": "Code size in bytes",
+                  "value": 237656
+                },
+                {
+                  "name": "LDS size",
+                  "description": "LDS size in bytes per workgroup",
+                  "value": 0
+                },
+                {
+                  "name": "Scratch size",
+                  "description": "Private memory in bytes per subgroup",
+                  "value": 20480
+                },
+                {
+                  "name": "Subgroups per SIMD",
+                  "description": "The maximum number of subgroups in flight on a SIMD unit",
+                  "value": 4
+                },
+                {
+                  "name": "Combined inputs",
+                  "description": "Number of input slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Combined outputs",
+                  "description": "Number of output slots reserved for the shader (including merged stages)",
+                  "value": 0
+                },
+                {
+                  "name": "Hash",
+                  "description": "CRC32 hash of code and constant data",
+                  "value": 1285797409
+                },
+                {
+                  "name": "Instructions",
+                  "description": "Instruction count",
+                  "value": 44343
+                },
+                {
+                  "name": "Copies",
+                  "description": "Copy instructions created for pseudo-instructions",
+                  "value": 6787
+                },
+                {
+                  "name": "Branches",
+                  "description": "Branch instructions",
+                  "value": 2671
+                },
+                {
+                  "name": "Latency",
+                  "description": "Issue cycles plus stall cycles",
+                  "value": 195784
+                },
+                {
+                  "name": "Inverse Throughput",
+                  "description": "Estimated busy cycles to execute one wave",
+                  "value": 97892
+                },
+                {
+                  "name": "VMEM Clause",
+                  "description": "Number of VMEM clauses (includes 1-sized clauses)",
+                  "value": 944
+                },
+                {
+                  "name": "SMEM Clause",
+                  "description": "Number of SMEM clauses (includes 1-sized clauses)",
+                  "value": 9
+                },
+                {
+                  "name": "Pre-Sched SGPRs",
+                  "description": "SGPR usage before scheduling",
+                  "value": 254
+                },
+                {
+                  "name": "Pre-Sched VGPRs",
+                  "description": "VGPR usage before scheduling",
+                  "value": 196
+                },
+                {
+                  "name": "VALU",
+                  "description": "Number of VALU instructions",
+                  "value": 25593
+                },
+                {
+                  "name": "SALU",
+                  "description": "Number of SALU instructions",
+                  "value": 13859
+                },
+                {
+                  "name": "VMEM",
+                  "description": "Number of VMEM instructions",
+                  "value": 967
+                },
+                {
+                  "name": "SMEM",
+                  "description": "Number of SMEM instructions",
+                  "value": 10
+                },
+                {
+                  "name": "VOPD",
+                  "description": "Number of VOPD instructions",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        },
+        "requiredSubgroupSize": null,
+        "heapCapacity": 40,
+        "signature": "d9804d7430af02a95e66d3899633cbd6536a84123150e32ded5262775f26c26c"
+      },
+      "runtime": {
+        "backend": "Vulkan",
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+        "software": false,
+        "transport": "headless C diagnostic; L\u00d6VE integration unverified"
+      }
+    }
+  ],
+  "replayGates": [
+    {
+      "status": "passed",
+      "comparedFights": 1000000,
+      "comparedWords": 16000000,
+      "gate": "Every report word is bit-identical to generic; preserves baseline outputs, not a new Forever parity certification."
+    },
+    {
+      "status": "passed",
+      "comparedFights": 1000000,
+      "comparedWords": 16000000,
+      "gate": "Every report word is bit-identical to generic; preserves baseline outputs, not a new Forever parity certification."
+    },
+    {
+      "status": "passed",
+      "comparedFights": 1000000,
+      "comparedWords": 16000000,
+      "gate": "Every report word is bit-identical to generic; preserves baseline outputs, not a new Forever parity certification."
+    },
+    {
+      "status": "passed",
+      "comparedFights": 1000000,
+      "comparedWords": 16000000,
+      "gate": "Every report word is bit-identical to generic; preserves baseline outputs, not a new Forever parity certification."
+    },
+    {
+      "status": "passed",
+      "comparedFights": 1000000,
+      "comparedWords": 16000000,
+      "gate": "Every report word is bit-identical to generic; preserves baseline outputs, not a new Forever parity certification."
+    }
+  ],
+  "medians": {
+    "generic": {
+      "gpuComputeMs": {
+        "median": 1866.22486,
+        "min": 1861.74288,
+        "max": 1870.70684
+      },
+      "executeReadbackMs": {
+        "median": 1885.6685,
+        "min": 1883.504,
+        "max": 1887.833
+      },
+      "wallMs": {
+        "median": 2210.7703254998796,
+        "min": 2208.9908379998633,
+        "max": 2212.549812999896
+      }
+    },
+    "shared-features": {
+      "gpuComputeMs": {
+        "median": 792.25206,
+        "min": 791.77352,
+        "max": 792.7306
+      },
+      "executeReadbackMs": {
+        "median": 806.1285,
+        "min": 805.161,
+        "max": 807.096
+      },
+      "wallMs": {
+        "median": 973.3385449999332,
+        "min": 972.9159520002213,
+        "max": 973.7611379996451
+      }
+    },
+    "shared-features-wave32": {
+      "gpuComputeMs": {
+        "median": 639.84378,
+        "min": 639.42812,
+        "max": 640.25944
+      },
+      "executeReadbackMs": {
+        "median": 651.4475,
+        "min": 651.124,
+        "max": 651.771
+      },
+      "wallMs": {
+        "median": 797.4850135001361,
+        "min": 797.1938670002601,
+        "max": 797.7761600000122
+      }
+    }
+  },
+  "speedup": {
+    "gpuComputeMs": 2.3555948343005886,
+    "executeReadbackMs": 2.339166150309783,
+    "wallMs": 2.271327213801064
+  },
+  "relativeToSharedFeatures": {
+    "gpuComputeMs": 1.238196079674323,
+    "executeReadbackMs": 1.2374420041522918,
+    "wallMs": 1.2205101394043527
+  },
+  "additionalVariants": {
+    "shared-features-wave32": {
+      "gpuComputeMs": 2.9166882891320753,
+      "executeReadbackMs": 2.8945824490845387,
+      "wallMs": 2.772177894349236
+    }
+  }
+}

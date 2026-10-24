@@ -1,0 +1,242 @@
+{
+  "scope": "325 actual software-Vulkan fights, fast batches 128 vs detailed batches 17, common output fields only",
+  "fields": [
+    "done",
+    "events",
+    "highWater",
+    "isbConsumed",
+    "isbProcs",
+    "mana",
+    "petBrandDamage",
+    "petCasts",
+    "petDamage",
+    "petMeleeCasts",
+    "petMeleeCrits",
+    "petMeleeDamage",
+    "petMeleeHits",
+    "petMeleeMisses",
+    "petSpellCasts",
+    "petSpellCrits",
+    "petSpellDamage",
+    "petSpellHits",
+    "petSpellMisses",
+    "procs",
+    "rngCalls",
+    "spent",
+    "taps",
+    "total"
+  ],
+  "differenceCount": 325,
+  "differences": [
+    {
+      "candidate": 0,
+      "fight": 0,
+      "field": "mana",
+      "fast": 945.9496459960938,
+      "detailed": 2.5223372357846707e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 1,
+      "field": "mana",
+      "fast": 457.5872497558594,
+      "detailed": 2.1019476964872256e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 2,
+      "field": "mana",
+      "fast": 474.7745056152344,
+      "detailed": 2.1019476964872256e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 3,
+      "field": "mana",
+      "fast": 474.7743835449219,
+      "detailed": 1.5414283107572988e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 4,
+      "field": "mana",
+      "fast": 149.96209716796875,
+      "detailed": 2.1019476964872256e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 5,
+      "field": "mana",
+      "fast": 474.7748718261719,
+      "detailed": 2.6624670822171524e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 6,
+      "field": "mana",
+      "fast": 489.96197509765625,
+      "detailed": 2.942726775082116e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 7,
+      "field": "mana",
+      "fast": 474.7746276855469,
+      "detailed": 1.1210387714598537e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 8,
+      "field": "mana",
+      "fast": 831.963623046875,
+      "detailed": 2.2420775429197073e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 9,
+      "field": "mana",
+      "fast": 457.5874938964844,
+      "detailed": 2.1019476964872256e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 10,
+      "field": "mana",
+      "fast": 814.7761840820312,
+      "detailed": 1.961817850054744e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 11,
+      "field": "mana",
+      "fast": 457.5873718261719,
+      "detailed": 2.5223372357846707e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 12,
+      "field": "mana",
+      "fast": 797.5872802734375,
+      "detailed": 2.5223372357846707e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 13,
+      "field": "mana",
+      "fast": 457.5874938964844,
+      "detailed": 2.1019476964872256e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 14,
+      "field": "mana",
+      "fast": 474.7757263183594,
+      "detailed": 2.2420775429197073e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 15,
+      "field": "mana",
+      "fast": 184.33767700195312,
+      "detailed": 1.6815581571897805e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 16,
+      "field": "mana",
+      "fast": 491.9626159667969,
+      "detailed": 1.5414283107572988e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 17,
+      "field": "mana",
+      "fast": 814.775390625,
+      "detailed": 2.1019476964872256e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 18,
+      "field": "mana",
+      "fast": 831.9623413085938,
+      "detailed": 2.5223372357846707e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 19,
+      "field": "mana",
+      "fast": 489.96173095703125,
+      "detailed": 1.6815581571897805e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 20,
+      "field": "mana",
+      "fast": 524.3370971679688,
+      "detailed": 1.6815581571897805e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 21,
+      "field": "mana",
+      "fast": 457.5870056152344,
+      "detailed": 3.0828566215145976e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 22,
+      "field": "mana",
+      "fast": 509.1505432128906,
+      "detailed": 2.1019476964872256e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 23,
+      "field": "mana",
+      "fast": 474.7752380371094,
+      "detailed": 1.8216880036222622e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 24,
+      "field": "mana",
+      "fast": 814.7747802734375,
+      "detailed": 2.6624670822171524e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 25,
+      "field": "mana",
+      "fast": 831.962890625,
+      "detailed": 2.1019476964872256e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 26,
+      "field": "mana",
+      "fast": 474.7756042480469,
+      "detailed": 1.8216880036222622e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 27,
+      "field": "mana",
+      "fast": 474.7745056152344,
+      "detailed": 3.5032461608120427e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 28,
+      "field": "mana",
+      "fast": 814.775146484375,
+      "detailed": 2.382207389352189e-44
+    },
+    {
+      "candidate": 0,
+      "fight": 29,
+      "field": "mana",
+      "fast": 184.337158203125,
+      "detailed": 2.802596928649634e-44
+    }
+  ]
+}

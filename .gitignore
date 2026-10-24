@@ -1,0 +1,12 @@
+core
+core.*
+*.love
+artifacts/
+
+# Local credentials, environment settings, and agent state
+.aws/
+.codex/
+.agents/
+.env
+.env.*
+!.env.example

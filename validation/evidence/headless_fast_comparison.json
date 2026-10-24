@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "forever-warlock-baseline-diagnostic-v1",
+  "suiteHash": "edd2627f45bc5a66099bc05998e9786273c68480662569d5a54ee0b253c602eb",
+  "decision": "diagnostic-only",
+  "scenarioCount": 5,
+  "maeDps": 1.04239269150396,
+  "maeApprox95Lower": 0.0,
+  "maeApprox95Upper": 4.110322801648714,
+  "thresholdDps": 1,
+  "observedWithinTarget": false,
+  "acceptanceBlockers": [
+    "Archived source suite is diagnostic-only. Audit mechanics, APL and resolved inputs before acceptance.",
+    "Five baseline cases are a starting diagnostic subset, not the historical 300-case accuracy claim.",
+    "sm_ruin__human__baseline: unresolved source input/APL/schema audit",
+    "aff_wrack__human__baseline: unresolved source input/APL/schema audit",
+    "destro__human__baseline: unresolved source input/APL/schema audit",
+    "demo_shadow_brand__human__baseline: unresolved source input/APL/schema audit",
+    "demo_fire_brand__human__baseline: unresolved source input/APL/schema audit"
+  ],
+  "intervalMethod": "Approximate normal independent-stream intervals, Bonferroni across scenarios; bounds averaged for MAE. Sampling uncertainty only, not mechanics accuracy.",
+  "rows": [
+    {
+      "id": "sm_ruin__human__baseline",
+      "referenceMean": 653.9611888176998,
+      "measuredMean": 652.0206955295139,
+      "deltaDps": -1.9404932881859622,
+      "absoluteErrorDps": 1.9404932881859622,
+      "deltaCi95SimultaneousHalfWidth": 3.881377196117389,
+      "absoluteErrorLower": 0,
+      "absoluteErrorUpper": 5.821870484303352,
+      "referenceSamples": 1000,
+      "measuredSamples": 1000
+    },
+    {
+      "id": "aff_wrack__human__baseline",
+      "referenceMean": 559.9273810168291,
+      "measuredMean": 559.5661279947917,
+      "deltaDps": -0.36125302203743104,
+      "absoluteErrorDps": 0.36125302203743104,
+      "deltaCi95SimultaneousHalfWidth": 2.302595930973048,
+      "absoluteErrorLower": 0,
+      "absoluteErrorUpper": 2.663848953010479,
+      "referenceSamples": 1000,
+      "measuredSamples": 1000
+    },
+    {
+      "id": "destro__human__baseline",
+      "referenceMean": 646.8817970141364,
+      "measuredMean": 645.6061398871527,
+      "deltaDps": -1.275657126983674,
+      "absoluteErrorDps": 1.275657126983674,
+      "deltaCi95SimultaneousHalfWidth": 2.711284938167627,
+      "absoluteErrorLower": 0,
+      "absoluteErrorUpper": 3.9869420651513012,
+      "referenceSamples": 1000,
+      "measuredSamples": 1000
+    },
+    {
+      "id": "demo_shadow_brand__human__baseline",
+      "referenceMean": 715.7103036576442,
+      "measuredMean": 716.0072427951388,
+      "deltaDps": 0.29693913749463263,
+      "absoluteErrorDps": 0.29693913749463263,
+      "deltaCi95SimultaneousHalfWidth": 3.822783009016976,
+      "absoluteErrorLower": 0,
+      "absoluteErrorUpper": 4.1197221465116085,
+      "referenceSamples": 1000,
+      "measuredSamples": 1000
+    },
+    {
+      "id": "demo_fire_brand__human__baseline",
+      "referenceMean": 752.8404117560708,
+      "measuredMean": 754.1780326388889,
+      "deltaDps": 1.3376208828181007,
+      "absoluteErrorDps": 1.3376208828181007,
+      "deltaCi95SimultaneousHalfWidth": 2.621609476448726,
+      "absoluteErrorLower": 0,
+      "absoluteErrorUpper": 3.9592303592668268,
+      "referenceSamples": 1000,
+      "measuredSamples": 1000
+    }
+  ]
+}

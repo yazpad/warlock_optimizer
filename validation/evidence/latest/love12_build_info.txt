@@ -1,0 +1,6 @@
+source=/home/aaron-ma/love
+revision=fc42127510659651ee692ab820992fd978fae92c
+LuaJIT=ON
+Vulkan=enabled by upstream Linux config.h
+008f2ba115a1baf397f464d5ed0721965506bee06f932ee4d5e33c4c51c9fd42  /home/aaron-ma/love/CMakeLists.txt
+322fecbf6f0cd9a36d98406e60b93d634a4494bdec47f8cb8ac8d8f6092fb34e  /home/aaron-ma/love/src/common/config.h

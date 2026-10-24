@@ -1,0 +1,7 @@
+local json=require('app.json')
+assert(json.encode({key='line\n"quote"\\\0',bool=true,n=1.25})=='{"bool":true,"key":"line\\n\\"quote\\"\\\\\\u0000","n":1.25}')
+assert(json.encode({{id='a'},{id='b'}})=='[{"id":"a"},{"id":"b"}]')
+assert(not pcall(json.encode,{value=0/0}))
+local cycle={};cycle.self=cycle;assert(not pcall(json.encode,cycle))
+local reused={id='same'};assert(json.encode({reused,reused})=='[{"id":"same"},{"id":"same"}]')
+print('PASS: JSON output escaping, arrays, shared objects and invalid-value rejection')

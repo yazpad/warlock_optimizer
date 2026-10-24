@@ -1,0 +1,6 @@
+{
+  "status": "passed",
+  "comparedFights": 325,
+  "comparedWords": 52975,
+  "gate": "Every report word is bit-identical to generic; preserves baseline outputs, not a new Forever parity certification."
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "scope": "Small actual software-Vulkan/offscreen Dear ImGui process-client smoke; not hardware performance evidence",
+  "status": "diagnostic-only",
+  "softwareDiagnostic": true,
+  "totalFights": 10,
+  "replay": {
+    "status": "passed",
+    "referencePresentation": "headless",
+    "candidatePresentation": "rendering-paused",
+    "gates": [
+      {
+        "status": "passed",
+        "comparedFights": 10,
+        "comparedWords": 160,
+        "gate": "Every report word is bit-identical across frontend presentation modes; accepted Forever parity remains separate."
+      }
+    ],
+    "note": "Every raw report word matched across presentation modes. This is correctness evidence; aggregate-only paired hardware timing is a separate gate."
+  },
+  "uiObservations": {
+    "framesDuringNativeJobs": 0,
+    "frontendBuildType": "Release",
+    "frontendSourceHash": "cd2fb233fa64df89e0a60baf9713559c3e743244a2a64504343b9e10433d2023",
+    "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+    "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+    "renderer": "SDL3 + OpenGL3 (UI only)",
+    "rendererInitialized": true,
+    "sdlVersion": 3005000
+  },
+  "nativeRuntime": {
+    "backend": "Vulkan",
+    "engineBuildKey": "c9b06b7efe3c8712cfa6fccd25498fdf6c59d2886688f54260366cfa824ff12b",
+    "nativeRunnerHash": "b34e0a4fc3abcc275d25e195e7b775598d80c01103f2afef8fe24a770afe2544",
+    "transport": "native LuaJIT + C Vulkan engine"
+  },
+  "device": "llvmpipe (LLVM 20.1.2, 256 bits)",
+  "requiredSubgroupSize": 0,
+  "sourceFiles": {
+    "paired": "artifacts/imgui-paired-final-smoke/summary.json",
+    "attached": "artifacts/imgui-paired-final-smoke/pair-1-gui/summary.json"
+  },
+  "rawReportsRetained": false
+}

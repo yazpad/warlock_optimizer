@@ -1,0 +1,40 @@
+{
+  "scope": "Actual Vulkan fast/detailed per-fight replay; common report fields only, not Forever mechanics parity or L\u00d6VE integration",
+  "suiteHash": "f6f9829a72afc7f43773f2b78da195caaf567b8f5292dca6ba33f794149212f3",
+  "kernelHashes": {
+    "sim/classes/warlock/generated/fast.glsl": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+    "sim/classes/warlock/generated/detailed.glsl": "fa3873417296082494f88a329edf1607c27972db6991db3973c9ad8feed580ca",
+    "sim/classes/warlock/generated/layout.lua": "81312c56573b184da5aa3a6817ba33b41676bf5608e5d0d3650f37ae54bf35f1"
+  },
+  "sampleCount": 325,
+  "fastDraws": 6,
+  "detailedDraws": 20,
+  "fields": [
+    "done",
+    "events",
+    "highWater",
+    "isbConsumed",
+    "isbProcs",
+    "mana",
+    "petBrandDamage",
+    "petCasts",
+    "petDamage",
+    "petMeleeCasts",
+    "petMeleeCrits",
+    "petMeleeDamage",
+    "petMeleeHits",
+    "petMeleeMisses",
+    "petSpellCasts",
+    "petSpellCrits",
+    "petSpellDamage",
+    "petSpellHits",
+    "petSpellMisses",
+    "procs",
+    "rngCalls",
+    "spent",
+    "taps",
+    "total"
+  ],
+  "differenceCount": 0,
+  "differences": []
+}
