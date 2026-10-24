@@ -6,7 +6,7 @@ int clock_gettime(int, fastsim_timespec*); int setenv(const char*,const char*,in
 local function now() local t=ffi.new('fastsim_timespec');assert(ffi.C.clock_gettime(1,t)==0);return tonumber(t.tv_sec)+tonumber(t.tv_nsec)*1e-9 end
 local started=now()
 local iohelp=require('tools.native_support')
-local json=require('app.json')
+local json=require('sim.common.json')
 local layout=require('sim.classes.warlock.generated.layout')
 local suite=require('data.validation.forever_baseline')
 local specialize=require('sim.classes.warlock.specialize')

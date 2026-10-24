@@ -1,72 +1,39 @@
 # Delivery checklist
 
-Current evidence and workload are in [STATUS.md](STATUS.md). Checkboxes below separate implemented tooling, measured headless behavior, and remaining product gates.
+Current measurements are in [STATUS.md](STATUS.md); remaining implementation details are in [TODO.md](TODO.md).
 
-## 1. Clean development baseline
+## 1. Native/ImGui cutover
 
-- [x] Native LuaJIT/C/Vulkan execution with Node.js/Lua development tooling; no Python source or required commands.
-- [x] Lua syntax, UI/APL, lifecycle, contract, JSON, reporting, and reference-job checks.
-- [x] Native specialization checks, parity decisions/uncertainty/audit blockers, historical comparison numerics, and strict variant replay rejection checks.
-- [x] Offline Vulkan shader compilation/SPIR-V validation and C compiler checks.
-- [x] Content-based native executable/SPIR-V caches, isolated temporary inputs, saved input/source identities and full-run timing.
-- [x] Preserve latest performance evidence and retain historical diagnostic/failed evidence.
-- [ ] Rerun controlled hardware experiments with the migrated native tooling, including detailed-mode coverage.
+- [x] Build the thin Dear ImGui frontend with pinned sources/license/hashes.
+- [x] Keep compute in the existing isolated native Vulkan/C worker, independent of UI rendering/frame pacing.
+- [x] Pass hardware million-fight replay: every one of 16 million words matches headless.
+- [x] Pass five alternating hardware timing pairs: GPU 1.565M headless / 1.567M GUI, within ≤2% GPU-time / ≤5% steady-time overhead gates.
+- [x] Record zero frontend render frames during paused-priority jobs; keep live mode separately labeled.
+- [x] Archive the complete hardware experiment, original native results and source/build/presentation identities.
+- [x] Make `tools/run.sh` launch ImGui; remove LÖVE app/config, runners, patches/build scripts, generated build/dependencies and backend-specific tests.
+- [x] Preserve historical evidence and frozen suite/shader/layout hashes; verify exact wrapped Vulkan compiler inputs are unchanged.
+- [x] Retain native JSON/APL/specialization/parity/replay/shader/C checks and C++ worker lifecycle/cancellation tests.
 
-## 2. Headless speed target
+## 2. Persistent native engine
 
-- [x] Execute one million valid frozen-workload fights on RX 5600 XT.
-- [x] Reach **1.56M GPU sims/sec / 1.25M full-run sims/sec** in the latest preserved benchmark.
-- [x] Pass every report-word comparison against generic in forward/reverse controls.
-- [x] Retain heap40 and wave32 on supported hardware; reject unsupported subgroup requests.
-- [x] Remove the large host decoding cost using C aggregation and cached readback.
-- [ ] Record a fresh native warm-run distribution separately from cold compiler/pipeline startup.
-- [ ] Measure mixed/edge workloads and detailed reports independently; do not generalize the frozen fast-mode result.
+- [ ] Extract a reusable C engine ABI and explicit error/resource lifetime handling; keep CLI and GUI on one implementation.
+- [ ] Reuse devices, pipelines and buffers across jobs; avoid shader generation on cache hits.
+- [ ] Preserve wave32 enforcement, heap40, 65,536-fight batches, cached readback and C validation/aggregation.
+- [ ] Repeat full raw replay and paired hardware performance gates after compute-path changes.
+- [ ] Keep cold startup/compilation, warmups, steady evaluation, GPU intervals and client overhead separately visible.
 
-## 3. Next: thin Dear ImGui frontend, native compute performance
+## 3. Coverage and accuracy
 
-- [ ] Extract a reusable native C engine; keep CLI and GUI on the same compute implementation.
-- [x] Add an experimental ImGui frontend with immutable isolated worker jobs, coarse progress and aggregate results; no per-fight UI work or frame-paced compute. The persistent C engine library is still open.
-- [x] Reuse the original native runner for specialization/pipelines, wave32, heap40, 65,536-fight batches, cached readback and C aggregation. Confirm actual hardware throughput next.
-- [ ] Pass full million-fight report-word replay and detailed/edge failure checks between CLI and GUI engine jobs.
-- [x] Implement raw replay and alternating paired benchmark harness, with presentation/source/build identities and separate raw/aggregate-only phases.
-- [ ] Run at least five hardware pairs; require ≤2% extra median GPU time and ≤5% steady overhead. Software smoke is not acceptance.
-- [ ] Measure visible throttled UI and rendering-paused compute-priority modes separately; keep standalone benchmarks.
-- [ ] Retire LÖVE code/patches/dependencies only after equivalent native correctness and performance coverage; preserve historical evidence.
+- [ ] Extend detailed/edge/mixed-input, native cancellation/retry/device-failure and cleanup coverage on hardware.
+- [ ] Measure continuous live-rendering overhead separately from the accepted paused mode.
+- [ ] Add arbitrary packed candidates and a representative 1,000 distinct APL/talent × 1,000-fight benchmark; diverse throughput remains unmeasured.
+- [ ] Add generic wave32 as an independent native control.
+- [ ] Pin/audit Forever engine/data/inputs/APLs/schema adaptations, freeze the approved matrix and collect adequate independent samples.
+- [ ] Establish accepted ≤1 DPS MAE with uncertainty and no unresolved blockers. Current 1.0424 DPS diagnostic MAE is not acceptance.
 
-## Historical LÖVE 12/Vulkan experiment (superseded direction)
+## 4. Later product/search work
 
-- [x] Replace disconnected UI with a minimal benchmark workbench.
-- [x] Build a project-local patched runtime with explicit subgroup-size control and opt-in GPU timestamps; preserve patch provenance.
-- [x] Implement actual-width shader canary, full raw-word diagnostic replay, warmups and million-fight LÖVE benchmark; verify offline/synthetic paths.
-- [x] Run patched wave32 on hardware: 1.331M GPU / 1.049M steady / 0.803M evaluation fights/sec. Further LÖVE tuning is superseded by migration.
-
-
-- [x] Build pinned LÖVE 12 locally with LuaJIT/Vulkan; preserve build provenance.
-- [x] Add generic/specialized fast/detailed and aggregate smoke coverage, explicit reference specialization option, and immutable option validation; synthetic execution passes.
-- [x] Confirm pinned LÖVE 12.0.0 / Vulkan on AMD Radeon RX 5600 XT (RADV NAVI10); dependency lock/packaging remains future work.
-- [x] Pass `--compute-smoke` and `--warlock-smoke` on real LÖVE 12/Vulkan (user-run hardware checks).
-- [x] Exercise real ByteData FFI decoding with retained samples and specialized aggregate-only decoding, fast and detailed.
-- [ ] Compare real FFI decoding against the ordinary unpack decoder explicitly, including invalid-report cases.
-- [ ] Compare specialized/generic results in the application with different batch sizes and mixed candidates.
-- [ ] Check responsiveness, cancellation, readback failure/timeout, retry, and resource cleanup on real runtime objects.
-- [x] Measure LÖVE application throughput independently; preserve the result as migration evidence.
-
-## 4. Accepted Forever accuracy
-
-- [ ] Pin approved engine/data/mechanics provenance and resolved logical inputs.
-- [ ] Audit historical APL/input/schema differences and adaptations.
-- [ ] Freeze an approved matrix covering specs, pets, racials, resource edges, policies, and durations.
-- [ ] Compare counters/resources/traces to explain differences, then collect sufficient independent samples.
-- [ ] Establish **≤1 DPS MAE** with reported uncertainty and no unresolved acceptance blockers.
-
-Exact optimization replay preserves generic outputs. Current five-case saved-reference comparisons are diagnostic-only and do not close this gate.
-
-## 5. Product and search
-
-- [ ] Product UI is deferred by user preference. Add connected product flows only after the benchmark/accuracy work and an explicit scope decision.
-- [ ] Add validated saved builds/APLs, schema versions, and configuration resolution.
-- [ ] Add candidate evaluation jobs with IDs, seed schedules, cancellation, and reproducible exports.
-- [ ] Implement authored/evolved APL search with independent reevaluation of finalists.
-- [ ] Define neural observations, action masking, weights, inference and scoring contracts; implement and measure them.
-- [ ] Treat MCTS as a separate designed/measured policy workflow if pursued.
-- [ ] Add another class through shared contracts, its own accuracy suite, and reproducible desktop packaging.
+- [ ] Add validated configuration/APL persistence and resolution, job objectives and uncertainty exports.
+- [ ] Implement reproducible APL evolution and independent finalist reevaluation.
+- [ ] Define neural/MCTS policy contracts before implementation/performance claims.
+- [ ] Add another class with its own accuracy suite, and package supported desktop targets.

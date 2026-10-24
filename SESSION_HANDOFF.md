@@ -1,68 +1,55 @@
 # Fastsim handoff — 2026-10-24
 
-## Next implementation task
+## Current position
 
-**Replace LÖVE with a thin Dear ImGui frontend over the existing native Vulkan/C engine.** The user explicitly chose this direction to preserve GPU performance. The first experimental ImGui frontend now works through an isolated native process client. Persistent in-process engine-library extraction is not implemented yet. See [TODO.md](TODO.md) for the ordered migration and acceptance gates.
+The native Dear ImGui frontend passed its hardware gate: **1,566,647 GUI-attached GPU fights/sec versus 1,565,063 headless**, five alternating pairs on RX 5600 XT / RADV NAVI10. One million fights / 16 million report words matched exactly across presentation modes. Paused mode issued zero UI render frames during jobs. GPU-time ratio 0.998989 and steady-time ratio 0.995598 pass the ≤2% / ≤5% relative-overhead ceilings.
 
-Keep compute independent of UI frames and rendering. Refactor `tools/vulkan_probe.c` into a reusable engine/C ABI; have both CLI and frontend call that engine. Retain shaders, specialization, wave32 enforcement, heap40, batch size 65,536, cached readback and C aggregation. Submit immutable jobs to a worker; send only coarse progress and aggregate results to ImGui. No per-fight UI decoding, shader regeneration on cache hits, or per-frame/GCD dispatch pacing.
+The fixed workload remains five Warlock builds × 200,000 180-second fights, seed 101, fast mode, shared features + required wave32, heap40, batches of 65,536 and two discarded warmup batches. Native full-run rate was ~1.003M headless / ~0.997M GUI, including preparation/warmups. Do not confuse GPU throughput with full-run throughput.
 
-## Runnable first slice
+Evidence: [archived paired experiment](validation/evidence/latest/rx5600xt_imgui_paired/summary.json), including per-run original native results and frontend identities/observations. It certifies the rendering-paused frozen workload on this GPU, not continuous rendering or diverse search populations.
 
-`./tools/run_imgui.sh` opens the new minimal frontend. `--benchmark` runs the fixed native benchmark with a window attached and exits; `--headless` uses the same worker without SDL initialization. `node tools/benchmark_imgui.mjs` implements raw-word replay first, then five alternating headless/GUI timing pairs. Do not certify hardware performance before that run passes and the standalone CLI still reaches its current baseline.
+## Backend removal complete
 
-`native/frontend/native_job.*` owns immutable job snapshots, process-group launch/cancel/reap, coarse progress, native JSON validation and summaries. It runs the existing LuaJIT/C/Vulkan path without changing the compute implementation. The original engine exits on errors, so process isolation safely preserves failure behavior while the future C ABI/resource-lifetime refactor is deferred. Repeated process/setup costs still exist.
+The user authorized removing LÖVE after the hardware pass. Root app/config, LÖVE runners/report decoder/contracts, benchmark/smoke/reference host code, runtime patch/build script, generated project-local build/dependencies and backend-specific tests are removed. Historical evidence remains immutable. The independent upstream checkout outside this project was left untouched.
 
-Dear ImGui uses SDL3/OpenGL3 for UI rendering only; native compute remains Vulkan. Default compute priority drains the announcement frame before launching a job and issues zero UI render frames during work; Escape/close/signals still cancel. Optional `--live-ui` renders at about 10 Hz and has a distinct label. UI observations, frontend source/build identity, native engine/runner hashes and original native results are saved under `artifacts/imgui/`.
+`tools/run.sh` now launches ImGui through `tools/run_imgui.sh`. Shared JSON encoding moved from the removed app directory to `sim/common/json.lua`. Frozen combat/suite/layout snapshots and exact wrapped Vulkan compiler inputs remain unchanged. Native wrapper compatibility for historical source tags stays; new imports emit native GLSL 450. No LÖVE library/runtime is required.
 
-Build, CTest worker lifecycle/rejection/cancellation tests and offscreen UI rendering pass. Small actual software-Vulkan headless/attached jobs matched all raw words; paused mode recorded zero UI frames and live mode rendered during work. A real SIGTERM cancellation test rejected medians and cleaned its owned work directory. These are software/behavioral checks, not hardware speed certification. See [native/README.md](native/README.md).
+## Architecture
 
-## Measured position
+`native/ui/main.cpp` is the small Dear ImGui/SDL3/OpenGL3 job client. `native/frontend/native_job.*` owns immutable submissions, isolated process-group lifecycle/cancel/reap, coarse progress and completed-result validation. It launches the existing `tools/run_native.lua` / `tools/vulkan_probe.c` path. Vulkan shaders, queues, buffers, readback and C aggregation stay entirely in that engine.
 
-Frozen workload: five baseline Warlock builds × 200,000 valid 180-second fights, seed 101, fast mode, heap40, shared features + wave32, batches of 65,536, two discarded warmups. RX 5600 XT / RADV NAVI10.
+This is a process client. Persistent in-process C ABI/device/pipeline/buffer extraction remains future work; the prototype deliberately retained the original engine's exit-on-error isolation. Do not implement simulation work in UI callbacks or tie batches to UI frames. Keep rendering-paused priority as default; optional live rendering is a separate labeled measurement.
 
-| Path | GPU fights/sec | Steady fights/sec | Full evaluation/run fights/sec |
-| --- | ---: | ---: | ---: |
-| Historical native controlled experiment | ~1.56M | Not separately recorded | ~1.25M |
-| Later user native run | ~1.56M | Not separately recorded | ~1.01M |
-| Actual LÖVE wave32 median | **1.331M** | **1.049M** | **0.803M** |
+Dear ImGui sources/version/license/hashes are vendored. Linux build requires SDL3, OpenGL, nlohmann-json, CMake/Ninja/C++17 and the native Vulkan/LuaJIT toolchain. Node.js only handles development tooling; there is no Python source/dependency.
 
-LÖVE cached third run: 757 ms GPU, 190 ms LuaJIT validation/summary, ~15 ms other steady overhead, 176 ms repeated shader preparation/cache lookup, 107 ms warmups; ~1,245 ms total evaluation. The setup figure includes specialization performed before pipeline-cache lookup, not necessarily shader recompilation. Native C aggregation previously took ~12 ms. The GPU gap has not been isolated with back-to-back matching runs; compiler/SPIR-V and clock/load differences are possible causes, not proven explanations.
-
-Evidence: `validation/evidence/latest/love12_wave32_benchmark.json`, historical native `rx5600xt_wave32_abc_cba.json` and `rx5600xt_native_million_probe.json` in the same directory. Timing scopes differ; do not present the table as a paired causal experiment.
-
-## Migration acceptance
-
-- Rerun matched current native and GUI-attached workloads in alternating paired order, at least five pairs. Keep hashes, kernels, seeds, warmups and timing definitions identical.
-- Require full million-fight report-word replay, valid completion/counts, explicit subgroup checks and actual-width verification.
-- Target no measurable regression. Initial ceilings: GUI median GPU time ≤2% above paired native; matched steady evaluation ≤5% overhead. Investigate systematic loss, preserve C reduction, and do not lower the baseline to the slower LÖVE result.
-- Measure headless, visible throttled UI and rendering-paused compute-priority modes separately. Shared-GPU rendering can consume compute capacity; label results honestly and prioritize compute when needed.
-- Preserve standalone benchmarking. Only retire LÖVE app/patches/dependencies after equivalent native correctness/performance coverage exists. Stop expanding the LÖVE integration.
-
-## Existing code and commands
-
-Implemented prototype commands (hardware acceptance still open):
+## Commands
 
 ```sh
 ./tools/check.sh
 ./tools/build_imgui.sh
-./tools/run_imgui.sh
-./tools/run_imgui.sh --benchmark
-./tools/run_imgui.sh --headless
+./tools/run.sh
+./tools/run.sh --benchmark
+./tools/run.sh --headless
 node tools/benchmark_imgui.mjs
+
+# Independent live-rendering measurement:
+node tools/benchmark_imgui.mjs --live-ui
+
+# Standalone native controls / actual transport check:
 ./tools/benchmark_gpu.sh
 ./tools/benchmark_wave32.sh --output-dir artifacts/wave32-next
-
-# Legacy LÖVE comparison path, retained during migration:
-./tools/run.sh --benchmark
-./tools/run.sh --warlock-smoke --subgroup-size 32
+node tools/check_headless_transport.mjs
 ```
 
-`tools/run_native.lua`, `tools/native_support.lua` and `tools/vulkan_probe.c` provide the native path. `benchmarks/love.lua`, `sim/gpu/warlock_runner.lua` and the patched local LÖVE runtime provide the legacy comparison. Existing Lua/Node generators/APL compiler/reference suites remain useful; there is no Python source or dependency.
+Each job saves native results and `summary.json` under a new `artifacts/imgui/` directory. The paired tool separates raw replay from aggregate-only timings and removes raw replay binaries afterward. Current guards record source/engine/runner/device identity and reject invalid counts/reports, unsupported required widths, cancelled jobs and evidence overwrites.
 
-Basic LÖVE compute/generic/specialized smoke checks and actual wave32 benchmark ran successfully on the user's hardware. The tool sandbox cannot open the normal display or expose `/dev/dri`; SDL offscreen OpenGL UI and software Vulkan diagnostics work. Preserve results instead of trying to benchmark software Vulkan for speed.
+The tool sandbox can run offscreen OpenGL UI and software Vulkan diagnostics but cannot access the normal display or `/dev/dri`; hardware comparisons run in the user's terminal. Software rates are not hardware speed evidence.
 
-## Accuracy and later scope
+## Next tasks
 
-The actual 5,000-fight LÖVE specialized reference export reproduces **1.0424 DPS MAE**, diagnostic-only with approximate bounds 0–4.1103 and unresolved suite audits. Accepted Forever ≤1 DPS MAE is still open. Exact optimization replay does not close that gate.
+1. Extract a persistent native C engine with a small ABI and explicit failure/resource ownership, retaining the same CLI/UI compute implementation and exact replay. Reduce repeated preparation/compilation and device/pipeline/buffer setup without changing the workload.
+2. Add arbitrary packed candidate submission and a representative **1,000 distinct APL/talent × 1,000-fight** benchmark. Mixed specialization is supported conceptually, but the current frontend runs the fixed suite and diverse throughput is unmeasured.
+3. Extend native detailed/edge/mixed-input, cancellation/retry/recovery and optional live-rendering hardware coverage.
+4. Audit/approve Forever mechanics/inputs/APLs/schema and reference precision. Current saved five-case **1.0424 DPS MAE** remains diagnostic-only; exact frontend/optimization replay does not certify ≤1 DPS accuracy.
 
-A representative 1,000-distinct-APL/talent × 1,000-fight search benchmark is still needed. Mixed inputs are supported; 1.56M/sec is not a measured diverse-search rate. Full UI, search/neural/MCTS features, persistence, classes and packaging follow the engine/frontend migration and accuracy work.
+Search, neural/MCTS policies, persistence, extra classes and broader UI follow those goals. Keep historical evidence immutable and generated outputs under ignored `artifacts/`.

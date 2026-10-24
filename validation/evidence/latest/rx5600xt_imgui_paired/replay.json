@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "referencePresentation": "headless",
+  "candidatePresentation": "rendering-paused",
+  "gates": [
+    {
+      "status": "passed",
+      "comparedFights": 1000000,
+      "comparedWords": 16000000,
+      "gate": "Every report word is bit-identical across frontend presentation modes; accepted Forever parity remains separate."
+    }
+  ],
+  "note": "Every raw report word matched across presentation modes. This is correctness evidence; aggregate-only paired hardware timing is a separate gate."
+}

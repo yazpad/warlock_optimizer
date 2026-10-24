@@ -23,12 +23,13 @@ export function run(file,args=[],options={}){
 }
 export function temporary(fn){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fastsim-'));try{return fn(dir);}finally{fs.rmSync(dir,{recursive:true,force:true});}}
 export function compileShader(source,destination,target){
- check(source.includes('#pragma language glsl4'),'Shader language marker changed');
+ // Frozen combat snapshots keep their historical tags; new imports use native GLSL.
+ check(source.includes('#pragma language glsl4')||source.includes('#version 450'),'Expected Vulkan GLSL 450 shader source');
  let binding=0;
  source=source.replace('#pragma language glsl4','#version 450\n#define love_GlobalThreadID gl_GlobalInvocationID').replaceAll('layout(std430)',()=>`layout(std430, set=0, binding=${binding++})`);
  fs.writeFileSync(destination+'.comp',source+'\nvoid main() { computemain(); }\n');
  run('glslangValidator',['-V',...(target?['--target-env',target]:[]),destination+'.comp','-o',destination]);run('spirv-val',[destination]);
 }
-export function layout(){return JSON.parse(run('lua',['-e','print(require("app.json").encode(require("sim.classes.warlock.generated.layout")))']));}
+export function layout(){return JSON.parse(run('lua',['-e','print(require("sim.common.json").encode(require("sim.classes.warlock.generated.layout")))']));}
 export function save(p,value){fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(value,null,2)+'\n');}
 export function cli(fn){try{fn();}catch(e){console.error(e.message);process.exitCode=2;}}

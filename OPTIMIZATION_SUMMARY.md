@@ -1,49 +1,39 @@
 # Optimization summary
 
-The latest measured RX 5600 XT / RADV NAVI10 result is **1.56M GPU sims/sec and 1.25M end-to-end sims/sec** for the frozen fast workload. The headless speed target is met. Accepted Forever accuracy remains open. Basic LÖVE 12/Vulkan hardware integration now passes; application performance and broader runtime coverage are separate open gates.
+The native Vulkan/C engine retains **~1.56M GPU fights/sec** with the thin ImGui frontend attached in rendering-paused mode. Five matched hardware pairs and full million-fight report replay passed. Native compute owns all dispatch/readback/validation/aggregation; the UI handles immutable jobs, coarse progress and final aggregates.
 
-## Evidence and workload
+## Current paired hardware result
 
-Five frozen baseline Warlock scenarios × 200,000 fights, 180-second duration, seed 101, 40-entry heap, batch size 65,536, two discarded warmup batches. The preserved generic/shared-wave64/shared-wave32 forward/reverse experiment passes all 16 million report words in each of five comparisons against generic.
+RX 5600 XT / RADV NAVI10; five fixed Warlock builds × 200,000 valid 180-second fights, seed 101, fast reports, shared features + required wave32, heap40, batch size 65,536, two discarded warmups.
 
-| Variant | Median GPU time | Median dispatch/readback | Median full-run time |
-| --- | ---: | ---: | ---: |
-| Generic | 1,866.225 ms | 1,885.669 ms | 2,210.770 ms |
-| Shared features, wave64 | 792.252 ms | 806.129 ms | 973.339 ms |
-| Shared features, wave32 | **639.844 ms** | **651.448 ms** | **797.485 ms** |
+| Median | Headless | ImGui, rendering paused |
+| --- | ---: | ---: |
+| GPU time | 638.952 ms | **638.306 ms** |
+| GPU fights/sec | 1,565,063 | **1,566,647** |
+| Steady evaluation | 671.069 ms | **668.115 ms** |
+| Native full-run fights/sec | 1,002,581 | 996,948 |
 
-[Preserved latest experiment](validation/evidence/latest/rx5600xt_wave32_abc_cba.json). These are two measurements per variant, not a broad performance distribution. Initial baseline timings at smaller batches and with old decoding are retained in historical evidence; they are not the simultaneous controls above.
+[Full archived paired experiment](validation/evidence/latest/rx5600xt_imgui_paired/summary.json). Every one of 16 million raw report words matched across one million fights in the separate correctness phase. All GUI timing runs recorded zero UI render frames during native jobs. GPU-time ratio 0.998989 and steady-time ratio 0.995598 pass the ≤2% / ≤5% overhead gates. Small observed differences are not a speedup claim. Live rendering, other devices and diverse workloads require independent measurement.
 
-The separate [native C probe result](validation/evidence/latest/rx5600xt_native_million_probe.json) records 640.074 ms GPU, 643.973 ms dispatch/readback, and 12.166 ms C decode. Its original outer Lua wall time was printed but not saved. Current tooling saves that timing and provenance; rerun hardware tests to measure the migrated path.
+## Retained compute optimizations
 
-## Retained shader changes
+- `sim/classes/warlock/specialize.lua` specializes only shared immutable integer mechanics; stats, varying settings, timing and APL data stay runtime inputs.
+- Consolidated decision/condition/cast call sites reduce inlining/code expansion. Event priorities remain ordered correctly; unused config/state fields are pruned and fast report stores are unrolled.
+- Heap40 remains private. Historical smaller-heap/LDS experiments lost performance and are not active production options.
+- Explicit wave32 capability checks reject unsupported requests without fallback.
+- The native C engine uses cached host-visible readback and C Welford count/mean/variance/totals; raw disk reports are optional diagnostics.
+- Batches of 65,536 raise utilization on the measured GPU/workload. Candidate IDs, seeds, fights and mechanics remain fixed through comparisons.
 
-`sim/classes/warlock/specialize.lua` specializes integer mechanics shared across submitted candidates. Stats, varying flags, clocks and APL data remain runtime inputs.
+## Frontend boundary
 
-- Consolidate `decide()`, condition evaluation, and cast dispatch call sites to reduce compiler inlining/code expansion.
-- Pack event tie-break priority into event data while preserving ordering.
-- Prune unused config/state fields; unroll fast report stores.
-- Retain the private 40-entry event heap. The smaller-heap and LDS experiments are historical rejected performance options.
-- Request wave32 only where supported; fail unsupported requests without fallback.
+Dear ImGui/SDL3/OpenGL3 renders the window only. The process-isolated worker runs the same LuaJIT/C/Vulkan engine as the CLI; the UI owns no compute buffers, per-fight decoder or per-GCD scheduling. Paused priority drains its announcement frame before starting work and stops issuing render/swap calls until completion. Live rendering is separately labeled and measured.
 
-Exact replay is the guard for optimization changes, including future policy/feature combinations. Passing the frozen baseline does not establish general policy coverage or independent engine fidelity.
+Per-job source preparation, device/pipeline setup, warmups and worker-process startup still exist. Persistent C ABI/device/pipeline/buffer extraction is the next optimization direction; preserve current exact replay and hardware performance gates through that refactor. Current full-run timing is around 1M/sec; it differs from GPU throughput and from the earlier ~1.25M/sec native orchestration result.
 
-## Retained host changes
+## Removed backend and preserved snapshots
 
-`tools/vulkan_probe.c` validates reports and computes count/mean/variance/totals in C. Cached host-visible readback removes the large uncached-memory decoding stall. Full raw reports are optional diagnostics rather than required disk output. Increasing batch size to 65,536 raises device utilization on the benchmark workload.
+LÖVE app/runtime code, runtime patches/build scripts, generated build dependencies and host-specific tests are removed. Historical LÖVE results remain immutable under `validation/evidence/`, including the slower 1.331M GPU / 1.049M steady / 0.803M evaluation run.
 
-`tools/run_native.lua` uses LuaJIT/C/Vulkan directly. C and SPIR-V caches use SHA-256 content identities. Inputs are isolated in per-run temporary directories. Saved results include suite/input/kernel identity, candidate summaries, device/probe information, and native full-run/build/shader/pipeline timings. Node.js provides benchmark orchestration, comparisons, validation, and importers; no Python source or required commands remain.
+Frozen combat/suite/layout snapshots and exact wrapped Vulkan compiler inputs were preserved during cleanup. Native wrappers translate their legacy source tags directly; they load no removed runtime. Future imports emit native GLSL 450. Shared JSON encoding now lives in `sim/common/json.lua`.
 
-The LÖVE host has Lua specialization and an FFI batch report decoder. Generic/specialized fast/detailed replay and specialized aggregate ByteData decoding now pass the hardware LÖVE smoke test. The actual LÖVE wave32 median is 1.331M GPU / 1.049M steady / 0.803M evaluation fights/sec; this is separate from the native baseline.
-
-## LÖVE benchmark transfer
-
-The pinned LÖVE 12 runtime now builds with a project-local Fastsim patch for required subgroup width and compute GPU timestamps. `./tools/run.sh --benchmark` checks actual subgroup width, preflights exact generic/variant raw report replay, and runs three million-fight evaluations through LÖVE's own dispatch/readback and LuaJIT decoding. Generic wave32 is an independent control. The disconnected UI was replaced with a minimal workbench.
-
-The user ran the patched runtime on hardware; its result is preserved at `validation/evidence/latest/love12_wave32_benchmark.json`. The native C readback/reduction path and LÖVE's staging-copy/LuaJIT path differ. Compare GPU timestamps with the native 1.56M/sec figure; compare steady and full evaluation wall rates separately. Process/window startup and diagnostic preflight are outside the per-evaluation timer. See README for commands and exact timing scope.
-
-## Next work
-
-Migrate to a thin Dear ImGui frontend over the native Vulkan/C engine, preserving C aggregation and independent compute scheduling. Require exact replay and paired performance gates before expanding UI functionality; see TODO.md. Stop expanding LÖVE-specific integration and preserve its results as historical evidence. Finish the approved Forever input/APL/accuracy audit separately. Continue kernel/reduction work only when new profiling or workloads justify it. No neural inference, neuroevolution, or MCTS throughput has been established; earlier numerical forecasts must not be treated as benchmark results.
-
-Commands and dependencies are in [README.md](README.md); delivery gates are in [CHECKLIST.md](CHECKLIST.md).
+Accepted Forever accuracy is still open: the saved five-case MAE 1.0424 DPS remains diagnostic-only. Neural/MCTS and diverse APL/talent throughput remain unmeasured. See [TODO.md](TODO.md), [CHECKLIST.md](CHECKLIST.md) and [native/README.md](native/README.md).

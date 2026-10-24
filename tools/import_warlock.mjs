@@ -21,7 +21,7 @@ function replaceOnce(text,expression,replacement){
 for(const detailed of [false,true]){
  const words=detailed?model.COMPACT_WORDS:16;
  let shader=kernel.buildFragment(detailed);
- shader=replaceOnce(shader,/precision highp float;[\s\S]*?uniform uint eventBudget;/,`#pragma language glsl4
+ shader=replaceOnce(shader,/precision highp float;[\s\S]*?uniform uint eventBudget;/,`#version 450
 layout(local_size_x=64, local_size_y=1, local_size_z=1) in;
 layout(std430) readonly buffer Configs { uint configData[]; };
 layout(std430) readonly buffer Parameters { uint parameters[]; };
@@ -35,7 +35,7 @@ layout(std430) writeonly buffer Results { uint resultData[]; };
 const uint mode=0u;`);
  shader=replaceOnce(shader,/uint getConfigWord\(uint cfgIdx, uint wordIdx\) \{[\s\S]*?\n\}/,`uint getConfigWord(uint cfgIdx,uint wordIdx) { return configData[cfgIdx*${model.CONFIG_WORDS}u+wordIdx]; }`);
  shader=replaceOnce(shader,/void main\(\)\{[\s\S]*?uint globalLane=offset\+lane;/,`void computemain(){
- uint lane=love_GlobalThreadID.x;
+ uint lane=gl_GlobalInvocationID.x;
  if(lane>=count)return;
  uint globalLane=offset+lane;`);
  let output=` for(uint word=0u;word<${words}u;word++) resultData[lane*${words}u+word]=outputWord(word);`;

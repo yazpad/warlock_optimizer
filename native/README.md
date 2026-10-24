@@ -17,10 +17,10 @@ This is **process isolation, not the planned persistent in-process C engine libr
 
 ```sh
 ./tools/build_imgui.sh
-./tools/run_imgui.sh
+./tools/run.sh
 
 # GUI-attached native benchmark, then exit. Default: rendering-paused.
-./tools/run_imgui.sh --benchmark
+./tools/run.sh --benchmark
 
 # Same native worker, no SDL/window initialization:
 ./tools/run_imgui.sh --headless
@@ -47,7 +47,7 @@ node tools/benchmark_imgui.mjs --live-ui
 
 The paired harness compares full report-word output across headless/GUI modes before timing acceptance, then checks matching source/input/device/results for all aggregate-only measurements. Raw replay timing is excluded from the performance comparison and its binaries are removed after the gate; replay counts/results are preserved. A passing hardware result requires at least five pairs, median GUI GPU time ≤1.02× headless and steady evaluation ≤1.05× headless. Any correctness failure rejects speed summaries. A measured regression exits nonzero. Paused mode must record zero UI render frames during native jobs.
 
-The initial 10-fight software-Vulkan/offscreen smoke passed exact replay and paused-frame accounting. This is **not** hardware performance certification. The RX 5600 XT **~1.56M GPU fights/sec** baseline and these relative gates must be confirmed in the user's normal hardware/display terminal. Keep the standalone CLI baseline too (`./tools/benchmark_gpu.sh`); passing the same-worker presentation test does not prove the underlying engine still reaches its historical rate.
+The RX 5600 XT hardware experiment passed: five alternating pairs, **1,565,063 headless / 1,566,647 paused-GUI GPU fights/sec**, exact replay of one million fights / 16 million report words, and zero paused-mode UI render frames. GPU-time ratio 0.998989 and steady-time ratio 0.995598 meet the gates. [Archived full experiment](../validation/evidence/latest/rx5600xt_imgui_paired/summary.json). Small differences are not a speedup claim. Live rendering, diverse workloads and other devices need independent measurement. Keep the standalone CLI baseline too (`./tools/benchmark_gpu.sh`); relative overhead and absolute throughput remain separate checks.
 
 Small software diagnostics (not speed evidence):
 
@@ -59,4 +59,4 @@ Small software diagnostics (not speed evidence):
 SDL_VIDEODRIVER=offscreen LIBGL_ALWAYS_SOFTWARE=1 ./tools/run_imgui.sh --ui-frames 3
 ```
 
-Tests: `./tools/build_imgui.sh` builds and runs CTest worker lifecycle/identity/rejection/cancellation tests with synthetic process results. `./tools/check.sh` retains native/shader/APL/reference tests. Neither synthetic rates nor software-Vulkan rates establish the hardware target. Full native library extraction and hardware acceptance gates remain unchecked in TODO.md.
+Tests: `./tools/build_imgui.sh` builds and runs CTest worker lifecycle/identity/rejection/cancellation tests with synthetic process results. `./tools/check.sh` retains native/shader/APL/reference tests. Neither synthetic rates nor software-Vulkan rates establish the hardware target. Persistent native library extraction, live-rendering hardware coverage and arbitrary candidate submission remain open in TODO.md. LÖVE runtime/app/build dependencies and backend-only tests are removed; the default launcher now selects ImGui.

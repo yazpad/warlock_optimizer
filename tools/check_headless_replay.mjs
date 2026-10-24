@@ -26,6 +26,6 @@ cli(()=>{
   const first=decode(raws[0],'fast',lane),second=decode(raws[1],'detailed',lane);
   for(const field of common)if(first[field]!==second[field]){differenceCount++;if(differences.length<30)differences.push({candidateId:ids[Math.floor(lane/fast.iterations)],fight:lane%fast.iterations,field,fast:first[field],detailed:second[field]});}
  }
- const report={scope:'Actual Vulkan fast/detailed common-field replay; not Forever parity or LOVE integration',suiteHash:fast.suiteHash,kernelHashes:fast.kernelHashes,sampleCount:count,fields:common,differenceCount,differences};
+ const report={scope:'Actual native Vulkan fast/detailed common-field replay; independent Forever mechanics parity is separate',suiteHash:fast.suiteHash,kernelHashes:fast.kernelHashes,sampleCount:count,fields:common,differenceCount,differences};
  if(rest.length)save(rest[1],report);check(!differenceCount,JSON.stringify(report));console.log(`PASS: ${count} fights, ${common.length} common fields match exactly`);
 });

@@ -1,6 +1,5 @@
 core
 core.*
-*.love
 artifacts/
 
 # Local credentials, environment settings, and agent state

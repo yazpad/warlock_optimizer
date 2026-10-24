@@ -16,8 +16,13 @@ function M.hash(s)
 end
 function M.wrap(source)
  local n=0
- local s,count=source:gsub('#pragma language glsl4','#version 450\n#define love_GlobalThreadID gl_GlobalInvocationID',1)
- assert(count==1,'Shader language marker changed')
+ -- Compatibility for frozen shader snapshots; no external runtime is loaded.
+ local s=source
+ if source:find('#pragma language glsl4',1,true) then
+  s=source:gsub('#pragma language glsl4','#version 450\n#define love_GlobalThreadID gl_GlobalInvocationID',1)
+ else
+  assert(source:find('#version 450',1,true),'Expected Vulkan GLSL 450 shader source')
+ end
  s=s:gsub('layout%(std430%)',function() local b=n;n=n+1;return ('layout(std430, set=0, binding=%d)'):format(b) end)
  return s..'\nvoid main() { computemain(); }\n'
 end

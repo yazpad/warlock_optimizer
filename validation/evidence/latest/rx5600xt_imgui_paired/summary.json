@@ -1,0 +1,299 @@
+{
+  "schemaVersion": 1,
+  "status": "passed-relative-overhead",
+  "presentation": "rendering-paused",
+  "softwareDiagnostic": false,
+  "pairs": 5,
+  "measurements": [
+    {
+      "pair": 1,
+      "mode": "headless",
+      "file": "pair-1-headless/summary.json",
+      "timing": {
+        "cDecodeMs": 12.048,
+        "clientWallMs": 999.143996,
+        "executeReadbackMs": 659.021,
+        "gpuComputeMs": 638.95172,
+        "gpuSimsPerSecond": 1565063.4761574785,
+        "nativeSimsPerSecond": 1010306.0267087112,
+        "nativeWallMs": 989.7991039979388,
+        "steadySimsPerSecond": 1490159.7302214825
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "none",
+        "rendererInitialized": false,
+        "sdlVersion": 3005000
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "gui",
+      "file": "pair-1-gui/summary.json",
+      "timing": {
+        "cDecodeMs": 12.145,
+        "clientWallMs": 1012.772686,
+        "executeReadbackMs": 656.205,
+        "gpuComputeMs": 638.3058,
+        "gpuSimsPerSecond": 1566647.208908332,
+        "nativeSimsPerSecond": 996632.4358093456,
+        "nativeWallMs": 1003.378942998097,
+        "steadySimsPerSecond": 1496222.0393506396
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "SDL3 + OpenGL3 (UI only)",
+        "rendererInitialized": true,
+        "sdlVersion": 3005000
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "gui",
+      "file": "pair-2-gui/summary.json",
+      "timing": {
+        "cDecodeMs": 11.749,
+        "clientWallMs": 1012.769984,
+        "executeReadbackMs": 658.308,
+        "gpuComputeMs": 639.83364,
+        "gpuSimsPerSecond": 1562906.2579454249,
+        "nativeSimsPerSecond": 996947.806408367,
+        "nativeWallMs": 1003.0615379982919,
+        "steadySimsPerSecond": 1492410.3471794191
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "SDL3 + OpenGL3 (UI only)",
+        "rendererInitialized": true,
+        "sdlVersion": 3005000
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "headless",
+      "file": "pair-2-headless/summary.json",
+      "timing": {
+        "cDecodeMs": 12.659,
+        "clientWallMs": 1016.430645,
+        "executeReadbackMs": 660.922,
+        "gpuComputeMs": 640.69556,
+        "gpuSimsPerSecond": 1560803.6990298482,
+        "nativeSimsPerSecond": 992450.5980099936,
+        "nativeWallMs": 1007.6068289999967,
+        "steadySimsPerSecond": 1484602.445734069
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "none",
+        "rendererInitialized": false,
+        "sdlVersion": 3005000
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "headless",
+      "file": "pair-3-headless/summary.json",
+      "timing": {
+        "cDecodeMs": 11.429,
+        "clientWallMs": 1007.71499,
+        "executeReadbackMs": 659.662,
+        "gpuComputeMs": 639.28484,
+        "gpuSimsPerSecond": 1564247.9493178658,
+        "nativeSimsPerSecond": 1001376.7428135385,
+        "nativeWallMs": 998.6251500013168,
+        "steadySimsPerSecond": 1490110.8791505175
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "none",
+        "rendererInitialized": false,
+        "sdlVersion": 3005000
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "gui",
+      "file": "pair-3-gui/summary.json",
+      "timing": {
+        "cDecodeMs": 12.077,
+        "clientWallMs": 1003.881228,
+        "executeReadbackMs": 656.038,
+        "gpuComputeMs": 638.83844,
+        "gpuSimsPerSecond": 1565340.996074062,
+        "nativeSimsPerSecond": 1005627.0110802499,
+        "nativeWallMs": 994.4044750009198,
+        "steadySimsPerSecond": 1496748.314287211
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "SDL3 + OpenGL3 (UI only)",
+        "rendererInitialized": true,
+        "sdlVersion": 3005000
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "gui",
+      "file": "pair-4-gui/summary.json",
+      "timing": {
+        "cDecodeMs": 11.568,
+        "clientWallMs": 1011.40717,
+        "executeReadbackMs": 656.259,
+        "gpuComputeMs": 637.37748,
+        "gpuSimsPerSecond": 1568928.9806724894,
+        "nativeSimsPerSecond": 994421.9125952638,
+        "nativeWallMs": 1005.6093769999279,
+        "steadySimsPerSecond": 1497393.7861152664
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "SDL3 + OpenGL3 (UI only)",
+        "rendererInitialized": true,
+        "sdlVersion": 3005000
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "headless",
+      "file": "pair-4-headless/summary.json",
+      "timing": {
+        "cDecodeMs": 12.104,
+        "clientWallMs": 1006.967242,
+        "executeReadbackMs": 657.498,
+        "gpuComputeMs": 636.40572,
+        "gpuSimsPerSecond": 1571324.6574842224,
+        "nativeSimsPerSecond": 1003013.8530159475,
+        "nativeWallMs": 996.9952030005516,
+        "steadySimsPerSecond": 1493424.4521372395
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "none",
+        "rendererInitialized": false,
+        "sdlVersion": 3005000
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "headless",
+      "file": "pair-5-headless/summary.json",
+      "timing": {
+        "cDecodeMs": 11.379,
+        "clientWallMs": 1006.335006,
+        "executeReadbackMs": 657.367,
+        "gpuComputeMs": 636.84876,
+        "gpuSimsPerSecond": 1570231.525613711,
+        "nativeSimsPerSecond": 1002581.0959070915,
+        "nativeWallMs": 997.4255489978532,
+        "steadySimsPerSecond": 1495336.046869813
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "none",
+        "rendererInitialized": false,
+        "sdlVersion": 3005000
+      }
+    },
+    {
+      "pair": 5,
+      "mode": "gui",
+      "file": "pair-5-gui/summary.json",
+      "timing": {
+        "cDecodeMs": 11.797,
+        "clientWallMs": 1006.015981,
+        "executeReadbackMs": 653.774,
+        "gpuComputeMs": 635.49788,
+        "gpuSimsPerSecond": 1573569.3720960957,
+        "nativeSimsPerSecond": 1003153.3503611767,
+        "nativeWallMs": 996.8565620001755,
+        "steadySimsPerSecond": 1502469.3083082044
+      },
+      "uiObservations": {
+        "framesDuringNativeJobs": 0,
+        "frontendBuildType": "Release",
+        "frontendSourceHash": "b42ded84abfc59a8dd4080622c36edabdac1189e8338814b2639b8c222f04081",
+        "imguiRevision": "f5f6ca07be7ce0ea9eed6c04d55833bac3f6b50b",
+        "note": "Frame count records frontend rendering calls, not compositor or other applications. GPU performance still needs paired hardware measurements.",
+        "renderer": "SDL3 + OpenGL3 (UI only)",
+        "rendererInitialized": true,
+        "sdlVersion": 3005000
+      }
+    }
+  ],
+  "replay": {
+    "status": "passed",
+    "referencePresentation": "headless",
+    "candidatePresentation": "rendering-paused",
+    "gates": [
+      {
+        "status": "passed",
+        "comparedFights": 1000000,
+        "comparedWords": 16000000,
+        "gate": "Every report word is bit-identical across frontend presentation modes; accepted Forever parity remains separate."
+      }
+    ],
+    "note": "Every raw report word matched across presentation modes. This is correctness evidence; aggregate-only paired hardware timing is a separate gate."
+  },
+  "thresholds": {
+    "gpuTimeRatio": 1.02,
+    "steadyTimeRatio": 1.05
+  },
+  "note": "Exact raw replay is measured separately from aggregate-only timing pairs. GPU and C aggregation are the same native backend; this checks presentation overhead, not independent engine accuracy.",
+  "replayRawFilesRetained": false,
+  "medians": {
+    "headless": {
+      "gpuComputeMs": 638.95172,
+      "steadyMs": 671.069,
+      "gpuSimsPerSecond": 1565063.4761574785,
+      "nativeSimsPerSecond": 1002581.0959070915,
+      "clientWallMs": 1006.967242
+    },
+    "gui": {
+      "gpuComputeMs": 638.3058,
+      "steadyMs": 668.115,
+      "gpuSimsPerSecond": 1566647.208908332,
+      "nativeSimsPerSecond": 996947.806408367,
+      "clientWallMs": 1011.40717
+    }
+  },
+  "gpuTimeRatio": 0.9989890941994803,
+  "steadyTimeRatio": 0.9955980681569259,
+  "withinThresholds": true,
+  "historicalNativeGpuTarget": 1560000
+}

@@ -188,7 +188,7 @@ static int gui(Options options) {
             for (const auto& row : result.at("results")) ImGui::Text("%s: %.3f DPS (%u fights)", row.at("candidateId").get<std::string>().c_str(), row.at("meanDps").get<double>(), row.at("sampleCount").get<uint32_t>());
         }
         if (!state.outputDirectory.empty()) ImGui::TextWrapped("Results: %s/summary.json", state.outputDirectory.c_str());
-        ImGui::Separator(); ImGui::TextWrapped("Native target: ~1.56M GPU fights/sec on RX 5600 XT. Attaching this UI is not yet hardware performance certified. Diagnostic reference accuracy remains unaccepted.");
+        ImGui::Separator(); ImGui::TextWrapped("Paused-UI fixed workload: ~1.56M GPU fights/sec on RX 5600 XT, validated against headless. Live rendering, diverse workloads and accepted reference accuracy still require validation.");
         if (ImGui::CollapsingHeader("Native worker log")) ImGui::TextUnformatted(state.log.c_str());
         ImGui::End(); ImGui::Render();
         int width = 0, height = 0; SDL_GetWindowSizeInPixels(window, &width, &height);
