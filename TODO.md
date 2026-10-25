@@ -18,7 +18,10 @@
 - [x] Optional approximately 10 Hz live mode has a separate label; saved observations include frontend frames and source/build/dependency identity.
 - [ ] Keep per-event/GCD callbacks, per-fight UI objects/decoding, resource reuploads and frame/vsync pacing out of all future compute integrations.
 - [ ] Extend worker recovery/cancellation/failure tests as the persistent API replaces process isolation. Preserve rejection of partial/failed results and unique evidence directories.
-- [ ] Defer dashboards/editors and broad UI features until arbitrary candidate jobs and engine contracts are ready.
+- [x] Initial build editor: text talent ranks, APL text + spell icons, direct-stat Forever JSON import, saved drafts and immutable single-candidate submission shared with CLI.
+- [ ] Extend import adapters to the user's WoWSims export version and equipped gear; keep unsupported settings explicit.
+- [x] Opt-in detailed runs: damage breakdowns, average uptimes and a bounded first-fight event timeline with exact replay checks; preserve the default fast-report path.
+- [ ] Repeat paired hardware performance gates after the editor integration (software replay is diagnostic only).
 
 ## 3. Maintain performance gates
 
@@ -41,7 +44,7 @@ Target no measurable regression from attaching UI. The historical ~1.56M GPU rat
 
 ## 5. Diverse candidates and later scope
 
-- [ ] Add arbitrary packed candidate submission to the native interface and frontend; the current app evaluates the fixed suite.
+- [x] Add immutable single edited-candidate submission to the native interface/frontend alongside the frozen suite. Arbitrary multi-candidate batches remain open.
 - [ ] Build **1,000 distinct APL/talent candidates × 1,000 fights** with documented diversity, exact replay and full timings. Shared specialization leaves differing settings as runtime data; stats/APLs always remain runtime inputs. Their speed is unmeasured.
 - [ ] Add generic wave32 independently of specialization; the native CLI currently ties explicit subgroup overrides to specialization.
 - [ ] Add reproducible APL evolution with held-out seeds and independent finalist reevaluation.

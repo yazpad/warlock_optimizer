@@ -20,9 +20,31 @@ The GUI submits immutable jobs to the existing LuaJIT/C/Vulkan worker. The engin
 ./tools/run.sh --benchmark --live-ui
 ```
 
-`tools/run_imgui.sh` is also available directly. Build products and job outputs live under ignored `artifacts/`. Each job gets a fresh output directory containing `native-N.json` and `summary.json`; use `--output-dir PATH` for an explicit new directory. Escape cancels an active job. The first frontend currently runs the fixed suite; arbitrary APL/talent/configuration editing is deferred.
+`tools/run_imgui.sh` is also available directly. Build products and job outputs live under ignored `artifacts/`. Each job gets a fresh output directory containing `native-N.json` and `summary.json`; use `--output-dir PATH` for an explicit new directory. Escape cancels an active job. The window opens the Warlock build editor: reference presets, direct-stat JSON import, talent rank controls, a multiline APL editor with spell icons, and saved drafts. **Simulate** evaluates the edited candidate. **Advanced → Frozen five-build benchmark** retains the historical workload; `--benchmark` and `--headless` without a candidate still select that workload.
 
-Linux dependencies: C++17 compiler, CMake/Ninja, Threads, SDL3 >=3.2, OpenGL, nlohmann-json >=3.10; native compute also needs Lua/LuaJIT, a C compiler, Vulkan headers/loader/driver, `glslangValidator`, `spirv-val` and `sha256sum`. Dear ImGui sources, commit, hashes and MIT license are vendored under `third_party/imgui/`; no network fetch is required by the frontend build. SDL3/OpenGL3 renders only the UI; simulation stays Vulkan. Set `FASTSIM_BUILD_JOBS` to adjust the default four compiler jobs.
+Use **Validate & save** to check the APL/talents and save `artifacts/editor/draft.json`; **Copy build** exports the same logical input. Re-run a saved editor build through the same preparation path:
+
+```sh
+./tools/run.sh --headless --candidate artifacts/editor/draft.json --runs 1
+```
+
+Each edited job saves `candidate.json` and the immutable packed `suite.json` with its native results. Editing, parsing and icon loading stay outside native compute. The fast shader and GPU transport are unchanged; histogram counters run alongside existing C aggregation. The default still renders zero UI frames during jobs.
+
+The DPS histogram appears automatically after a run and includes **every fight for each build in the last repeat**. Fixed-size counters update during existing C aggregation; there is no extra simulation, raw-report export or GPU readback. Five-build runs have a build selector; hover bars for DPS ranges and fight counts. **Advanced → DPS histogram** or `--no-histogram` disables collection for A/B measurements. Character and talent controls use a smaller 13 px font; APL text stays at the normal size.
+
+Histogram collection was checked with nine alternating million-fight RX 5600 XT pairs: median native wall time **982.0 ms off / 981.1 ms on**, with all 16 million report words identical and every bin checked against raw DPS. No end-to-end slowdown was measurable; favorable differences are noise, not a speedup claim. The isolated production C aggregation loop added approximately **0.12 ms per million reports** (7.42 → 7.54 ms). [Full evidence](validation/evidence/latest/histogram_paired/summary.json).
+
+Import currently accepts the local **Forever/Classic apiVersion 2 JSON** schema and copied editor builds. Unsupported gear, buffs, APL constructs, class/version and encounter settings are rejected; there is no item database, compressed share-link decoder, or general Retail/SoD adapter. Editable presets are fresh reference imports; the historical benchmark stays frozen separately.
+
+Click **Run detailed** to generate damage breakdowns, buff/DoT uptimes and an event timeline using the configured fight/run counts. Damage, DPS, casts, hits/crits/misses, ticks and uptimes are averages across the detailed fights. The timeline is **fight #1 per build**, with player/pet/system lanes, spell/event search, damage filtering and a time-range zoom. It records cast starts, casts, hits, ticks, misses, pet attacks, Life Tap and scheduled events with damage and mana snapshots. Captures are capped at 8,192 records per build; incomplete timelines are explicitly marked truncated. Output is saved in `details-N.json` beside the native results.
+
+Detailed runs use the 163-word report and a separate instrumented replay of the first fight. Tracing is accepted only when every word of that fight's detailed report matches the uninstrumented version. Detailed diagnostics are off in normal **Simulate** runs; neither pinned shader is modified. From the CLI:
+
+```sh
+./tools/run.sh --headless --detailed --total-fights 1000 --runs 1
+```
+
+Linux dependencies: C++17 compiler, CMake/Ninja, Threads, SDL3 >=3.2, OpenGL, libpng, nlohmann-json >=3.10, Node.js >=18 (editor preparation); native compute also needs Lua/LuaJIT, a C compiler, Vulkan headers/loader/driver, `glslangValidator`, `spirv-val` and `sha256sum`. Dear ImGui sources, commit, hashes and MIT license are vendored under `third_party/imgui/`; no network fetch is required by the frontend build. SDL3/OpenGL3 renders only the UI; simulation stays Vulkan. Set `FASTSIM_BUILD_JOBS` to adjust the default four compiler jobs.
 
 There is no Python source or required command. Node.js 22+ is development tooling for imports, comparisons and benchmark orchestration; the GUI and native job execution do not require Node.js.
 

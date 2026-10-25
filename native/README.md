@@ -29,9 +29,9 @@ This is **process isolation, not the planned persistent in-process C engine libr
 ./tools/run_imgui.sh --benchmark --live-ui
 ```
 
-Dependencies: C++17 compiler, CMake/Ninja, Threads, SDL3 >=3.2, OpenGL, nlohmann-json >=3.10, plus existing native runner tools (LuaJIT, C compiler, Vulkan, glslangValidator, spirv-val, sha256sum). The current machine already supplies these; no network fetch is used by the frontend build. Dear ImGui version/commit, unmodified source hashes and MIT license are pinned under `third_party/imgui/`. Set `FASTSIM_BUILD_JOBS` to change the default four compiler jobs. Build products are ignored under `artifacts/imgui-build/`.
+Dependencies: C++17 compiler, CMake/Ninja, Threads, SDL3 >=3.2, OpenGL, libpng, nlohmann-json >=3.10, Node.js >=18 (editor preparation), plus existing native runner tools (LuaJIT, C compiler, Vulkan, glslangValidator, spirv-val, sha256sum). The current machine already supplies these; no network fetch is used by the frontend build. Dear ImGui version/commit, unmodified source hashes and MIT license are pinned under `third_party/imgui/`. Set `FASTSIM_BUILD_JOBS` to change the default four compiler jobs. Build products are ignored under `artifacts/imgui-build/`.
 
-Defaults: three runs of one million fights, shared-feature specialization, required wave32, heap40, 65,536-fight batches and two discarded warmup batches. The fixed suite contains five candidates; total fights must be divisible by five, at least ten. `--generic` selects the existing native generic/default-width control; `--no-subgroup-size` retains specialization without forcing width. `--runs`, `--total-fights`, `--batch-size`, `--warmup-batches`, `--output-dir` and bounded/explicit `--raw-reports` support diagnostics. The current frontend intentionally evaluates the fixed suite; arbitrary candidate editing is deferred.
+Defaults: three runs of one million fights, shared-feature specialization, required wave32, heap40, 65,536-fight batches and two discarded warmup batches. The fixed suite contains five candidates; total fights must be divisible by five, at least ten. `--generic` selects the existing native generic/default-width control; `--no-subgroup-size` retains specialization without forcing width. `--runs`, `--total-fights`, `--batch-size`, `--warmup-batches`, `--output-dir` and bounded/explicit `--raw-reports` support diagnostics. The frozen benchmark retains these constraints; the editor also submits one immutable edited candidate.
 
 Each submission gets a fresh directory under `artifacts/imgui/`, or the explicitly supplied **new** `--output-dir`. `native-N.json` preserves each original native result. `summary.json` records timing scope, presentation mode, accepted repeats, medians, UI observations and errors. Engine build key, runner hash, suite/kernel/input identity and variant come from native output. GPU, C aggregation, native full-run, native steady and client-process times remain separate; GUI rates are not inferred from native historical numbers.
 
@@ -59,4 +59,95 @@ Small software diagnostics (not speed evidence):
 SDL_VIDEODRIVER=offscreen LIBGL_ALWAYS_SOFTWARE=1 ./tools/run_imgui.sh --ui-frames 3
 ```
 
-Tests: `./tools/build_imgui.sh` builds and runs CTest worker lifecycle/identity/rejection/cancellation tests with synthetic process results. `./tools/check.sh` retains native/shader/APL/reference tests. Neither synthetic rates nor software-Vulkan rates establish the hardware target. Persistent native library extraction, live-rendering hardware coverage and arbitrary candidate submission remain open in TODO.md. LÖVE runtime/app/build dependencies and backend-only tests are removed; the default launcher now selects ImGui.
+Tests: `./tools/build_imgui.sh` builds and runs CTest worker lifecycle/identity/rejection/cancellation tests with synthetic process results. `./tools/check.sh` retains native/shader/APL/reference tests. Neither synthetic rates nor software-Vulkan rates establish the hardware target. Persistent native library extraction, live-rendering hardware coverage and arbitrary multi-candidate batches remain open in TODO.md. LÖVE runtime/app/build dependencies and backend-only tests are removed; the default launcher now selects ImGui.
+
+
+## Build editor
+
+The normal window evaluates one edited candidate. APL text, talent ranks, race,
+pet/sacrifice and direct stats/buffs are resolved by `tools/editor_config.mjs`,
+shared with `--candidate FILE` in GUI/headless mode. The worker receives an
+immutable `suite.json`; it checks layout/kernel identity and uses the same
+specializer, shader cache, Vulkan transport and C aggregation. Candidate source
+is archived alongside results. Preparation occurs before native job timing.
+
+The frozen benchmark remains available in Advanced and is still the default
+for `--benchmark`/`--headless` without `--candidate`. Icons load once before jobs;
+rendering stays paused by default. Detailed output is enabled only by **Run detailed** or `--detailed`; normal Simulate uses fast mode.
+
+Imports target local Forever/Classic apiVersion 2 JSON exports with direct bonus
+stats. Equipped gear, other versions, compressed links and unsupported effects
+are rejected. The editable reference presets are separate from the immutable
+historical benchmark. Detailed analysis is available through Run detailed.
+
+`node validation/editor_config.mjs` covers round trips, packing identity, APL
+line errors, talent requirements and rejected imports. `lua validation/json_input.lua`
+covers safe data-only snapshot parsing. `tools/benchmark_imgui.mjs --candidate FILE`
+checks exact replay and presentation overhead for an edited input. Hardware
+throughput still requires the paired hardware gate; software smoke runs do not
+establish it.
+
+
+## DPS histogram
+
+All fights in the last repeat are shown automatically. The C aggregation pass
+updates 256 counters per candidate using DPS it already computes. The range
+starts at 0–1024 DPS and doubles when needed, merging adjacent counters without
+losing samples. UI plotting trims empty bins and merges only adjacent intervals.
+No raw reports, extra dispatches, transfers or second simulations are required.
+Counters are validated against sample counts before publishing results.
+
+The GUI/CLI launcher enables collection by default. Advanced > DPS histogram
+or `--no-histogram` disables it. The low-level native runner has the same flag;
+`FASTSIM_DPS_HISTOGRAM=0` disables it when invoking the C probe directly.
+
+`fastsim-histogram-test` checks range expansion, display rebinning, complete
+counts and rejection of corrupt histograms. Its `--integration "$PWD"` mode
+checks actual Vulkan reports are bit-identical with collection on/off and bins
+match the raw DPS. `node tools/benchmark_histogram.mjs` measures the production
+aggregation loop over one million synthetic valid reports, using alternating
+pairs, warmup, and a fixed CPU. Add `--vulkan --total-fights 1000000` for exact
+million-fight report replay and paired hardware timing. `--allow-software` is
+available for diagnostics; software rates do not establish hardware performance.
+
+Nine alternating RX 5600 XT pairs at one million fights passed exact report replay
+(16 million words) and complete histogram-count verification. Median native wall
+was 982.013 ms disabled / 981.142 ms enabled; GPU time was 637.650 / 636.640 ms.
+The small favorable differences are noise, not a speedup. A separately pinned
+CPU benchmark of the production aggregation loop measured 7.420 / 7.543 ms,
+about 0.123 ms added per million synthetic reports. See the full JSON evidence in
+`validation/evidence/latest/histogram_paired/summary.json`.
+
+
+## Detailed analysis and event trace
+
+`Run detailed` uses the configured fights/repeats and produces `details-N.json`.
+Damage breakdowns include each player spell and separate pet melee, spell and
+Demonic Brand damage. Statistics are per-fight averages; uptime fractions and
+active seconds are averaged across all detailed fights. Mana counters and damage
+reconciliation are retained in the JSON output.
+
+After detailed aggregation, the worker replays fight index 0 for each candidate
+with the same seed and packed inputs. `tools/detailed_trace.lua` derives an
+instrumented shader from the pinned detailed source; no generated shader file
+is changed and the fast path never loads the trace modules. It captures queued
+events, cast starts/casts, direct/periodic damage, misses, Life Tap and pet
+attacks, with timestamps, player/pet mana and outcome flags. The first 163 words
+must exactly match a separate uninstrumented replay before trace data is saved.
+
+Each build has a bounded 8,192-record buffer. Total and stored record counts
+are saved separately, and the UI warns when a long-fight timeline is truncated.
+The timeline represents one fight, not averaged events. The UI caches completed
+analysis, provides three actor lanes and a clipped event table, and supports
+search, damage-only filtering and time zoom. Native summary snapshots retain
+only the detailed artifact path, not thousands of event objects.
+
+`timing.detailsMs` separates trace/postprocessing cost from ordinary dispatch
+and C aggregation timings. Detailed native wall time includes diagnostics;
+never compare it directly to the fast benchmark rate. `--raw-reports` still
+exports only the requested aggregate-mode records (16 or 163 words per fight).
+
+Checks: `luajit validation/detailed.lua`, trace shader/SPIR-V validation through
+`tools/check.sh`, synthetic detailed-worker routing/rejection tests, and
+`node validation/detailed.mjs` for a small actual Vulkan end-to-end GUI-worker
+submission that checks reports, counters and unchanged fast mode.

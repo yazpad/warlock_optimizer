@@ -1,4 +1,5 @@
 #include "native_job.h"
+#include "dps_histogram.h"
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -43,10 +44,13 @@ Json validateNativeResult(const Json& result, const JobRequest& request, const J
     require(result.at("schemaVersion") == 1 && result.at("classId") == "warlock" && result.at("status") == "complete", "Incomplete or unsupported native result");
     const auto iterations = request.totalFights / suite.at("scenarios").size();
     require(result.at("iterations") == iterations && result.at("seed") == suite.at("seed") && result.at("suiteId") == suite.at("id"), "Native workload identity mismatch");
-    require(result.at("mode") == "fast" && result.at("runtime").at("backend") == "Vulkan", "Wrong native mode/backend");
+    require(result.at("mode") == request.mode && result.at("runtime").at("backend") == "Vulkan", "Wrong native mode/backend");
     require(result.at("kernelHashes") == suite.at("kernelHashes"), "Native source snapshot mismatch");
     for (const char* name : {"suiteHash", "inputSnapshotHash"})
         require(result.at(name).is_string() && result.at(name).get<std::string>().size() == 64, std::string("Missing identity: ") + name);
+    if (!request.suiteSource.empty()) require(result.at("suiteHash") == request.suiteHash, "Native suite snapshot hash mismatch");
+    if (request.mode == "fast") require(!result.contains("details"), "Fast run returned detailed diagnostics");
+    else require(result.at("details").at("timelineFightIndex") == 0 && result.at("details").at("traceCapacity") == 8192, "Invalid detailed trace metadata");
     const auto& probe = result.at("probe");
     require(probe.at("totalFights") == request.totalFights && probe.at("warmupBatches") == request.warmupBatches, "Native measured/warmup count mismatch");
     require(probe.at("requiredSubgroupSize") == (request.wave32 ? 32 : 0), "Native subgroup request mismatch");
@@ -60,6 +64,8 @@ Json validateNativeResult(const Json& result, const JobRequest& request, const J
     for (size_t i = 0; i < rows.size(); ++i) {
         const auto& row = rows[i];
         require(row.at("candidateId") == suite.at("scenarios")[i].at("id") && row.at("status") == "complete" && row.at("sampleCount") == iterations, "Native candidate identity/completion mismatch");
+        if (request.histogram) (void)histogramFromResult(row);
+        else require(!row.contains("histogram"), "Unexpected native histogram collection");
         numeric(row, "meanDps"); numeric(row, "sd"); numeric(row, "standardError");
         require(numeric(row, "maxHeap") <= 40, "Native heap capacity exceeded");
         numeric(row.at("totals"), "total");
@@ -93,7 +99,8 @@ void NativeJob::publishLine(const std::string& line) {
     unsigned completed = 0, total = 0;
     if (std::sscanf(line.c_str(), "Read back %u/%u fights", &completed, &total) == 2 && total == state_.totalFights && completed <= total) {
         state_.completedFights = completed; state_.phase = "Native GPU execution / C aggregation";
-    } else if (line.find("Warmup complete:") != std::string::npos) state_.phase = "Measured native dispatches";
+    } else if (line.find("Detailed analysis:") != std::string::npos) state_.phase = "Detailed trace and analysis";
+    else if (line.find("Warmup complete:") != std::string::npos) state_.phase = "Measured native dispatches";
     else if (line.find("Pipeline ready") != std::string::npos) state_.phase = "Native pipeline ready / discarded warmups";
 }
 void NativeJob::start(const JobRequest& input) {
@@ -101,9 +108,15 @@ void NativeJob::start(const JobRequest& input) {
     wait();
     JobRequest request = input;
     request.root = fs::canonical(request.root);
-    const Json suite = readJson(request.root / "data/validation/forever_baseline.json");
+    const Json suite = request.suiteSource.empty() ? readJson(request.root / "data/validation/forever_baseline.json") : Json::parse(request.suiteSource);
+    if (!request.suiteSource.empty()) {
+        require(request.suiteSource.size() <= 1048576 && request.suiteHash.size() == 64, "Invalid suite snapshot identity");
+        require(suite.at("schemaVersion") == 1 && suite.at("id") == "editor-warlock-v1" && suite.at("scenarios").size() == 1, "Unsupported editor suite");
+        require(suite.at("kernelHashes") == readJson(request.root / "data/validation/forever_baseline.json").at("kernelHashes"), "Editor kernel identity mismatch");
+    }
     const size_t candidates = suite.at("scenarios").size();
-    require(candidates && request.totalFights % candidates == 0 && request.totalFights / candidates >= 2 && request.totalFights / candidates <= 1048576 && request.totalFights <= 16777216, "Invalid fight count for frozen suite");
+    require(candidates && request.totalFights % candidates == 0 && request.totalFights / candidates >= 2 && request.totalFights / candidates <= 1048576 && request.totalFights <= 16777216, "Invalid fight count for selected candidates");
+    require(request.mode == "fast" || request.mode == "detailed", "Invalid simulation mode");
     require(request.batchSize >= 1 && request.batchSize <= 65536 && request.warmupBatches <= 32 && request.runs >= 1 && request.runs <= 10, "Invalid batch/warmup/run settings");
     require(!request.wave32 || request.specialized, "Current native CLI requires specialization for wave32");
     require(request.presentation == "headless" || request.presentation == "rendering-paused" || request.presentation == "visible-10hz", "Invalid presentation label");
@@ -119,15 +132,21 @@ void NativeJob::start(const JobRequest& input) {
 void NativeJob::execute(JobRequest request) {
     Json summary = {{"schemaVersion", 1}, {"status", "running"}, {"frontend", "Dear ImGui native process client"},
         {"computeBackend", "unchanged tools/run_native.lua + tools/vulkan_probe.c"},
-        {"presentation", request.presentation}, {"totalFights", request.totalFights}, {"batchSize", request.batchSize},
-        {"warmupBatches", request.warmupBatches}, {"requestedRuns", request.runs}, {"rawReports", request.rawReports}, {"runs", Json::array()},
+        {"presentation", request.presentation}, {"mode", request.mode}, {"totalFights", request.totalFights}, {"batchSize", request.batchSize},
+        {"warmupBatches", request.warmupBatches}, {"requestedRuns", request.runs}, {"rawReports", request.rawReports}, {"histogram", request.histogram}, {"runs", Json::array()},
         {"timingScope", "GPU/native/steady metrics come from native engine. Client wall includes process startup and JSON loading. UI rendering mode is labeled separately; rendering performance is not inferred from headless results."},
         {"validation", "diagnostic-only; hardware GUI performance gates and accepted Forever parity remain separate"}};
     pid_t child = -1;
     int readFd = -1;
-    fs::path activeOutput, activeRaw, workDirectory;
+    fs::path activeOutput, activeRaw, activeDetails, workDirectory;
     try {
-        const Json suite = readJson(request.root / "data/validation/forever_baseline.json");
+        const Json suite = request.suiteSource.empty() ? readJson(request.root / "data/validation/forever_baseline.json") : Json::parse(request.suiteSource);
+        if (!request.suiteSource.empty()) {
+            std::ofstream file(request.outputDirectory / "suite.json");
+            file << request.suiteSource; require(bool(file), "Cannot save suite snapshot");
+            summary["suiteHash"] = request.suiteHash;
+            if (!request.candidateSource.empty()) { std::ofstream candidate(request.outputDirectory / "candidate.json"); candidate << request.candidateSource; require(bool(candidate), "Cannot save candidate snapshot"); }
+        }
         Json previous;
         for (uint32_t index = 0; index < request.runs; ++index) {
             require(!cancelRequested_.load(), "Cancelled");
@@ -135,12 +154,16 @@ void NativeJob::execute(JobRequest request) {
             setPhase("Preparing native worker / shader cache");
             activeOutput = request.outputDirectory / ("native-" + std::to_string(index + 1) + ".json");
             activeRaw = request.outputDirectory / ("native-" + std::to_string(index + 1) + ".bin");
+            if (request.mode == "detailed") activeDetails = request.outputDirectory / ("details-" + std::to_string(index + 1) + ".json");
             workDirectory = request.outputDirectory / ("work-" + std::to_string(index + 1));
             std::vector<std::string> command = runner_;
             for (const auto& value : std::vector<std::string>{"--total-fights", std::to_string(request.totalFights), "--batch-size", std::to_string(request.batchSize), "--warmup-batches", std::to_string(request.warmupBatches), "--output", activeOutput.string(), "--work-dir", workDirectory.string()}) command.push_back(value);
+            if (request.mode == "detailed") { command.push_back("--mode"); command.push_back("detailed"); command.push_back("--details-output"); command.push_back(activeDetails.string()); }
+            if (!request.suiteSource.empty()) { command.push_back("--suite"); command.push_back((request.outputDirectory / "suite.json").string()); }
             if (!request.specialized) command.push_back("--generic");
             else if (!request.wave32) command.push_back("--no-subgroup-size");
             if (request.allowSoftware) command.push_back("--allow-software");
+            if (!request.histogram) command.push_back("--no-histogram");
             if (request.rawReports) { command.push_back("--raw-output"); command.push_back(activeRaw.string()); }
             std::vector<char*> argv; for (auto& argument : command) argv.push_back(argument.data()); argv.push_back(nullptr);
             int pipeFd[2]; require(pipe2(pipeFd, O_CLOEXEC) == 0, "Cannot create native worker pipe");
@@ -192,7 +215,18 @@ void NativeJob::execute(JobRequest request) {
             require(WIFEXITED(status) && WEXITSTATUS(status) == 0, "Native worker failed; inspect the captured log");
             Json result = readJson(activeOutput);
             Json timing = validateNativeResult(result, request, suite);
-            if (request.rawReports) require(fs::file_size(activeRaw) == uint64_t(request.totalFights) * 16 * 4, "Native raw report size mismatch");
+            if (request.rawReports) require(fs::file_size(activeRaw) == uint64_t(request.totalFights) * (request.mode == "detailed" ? 163 : 16) * 4, "Native raw report size mismatch");
+            if (request.mode == "detailed") {
+                require(result.at("details").at("path") == activeDetails.string(), "Detailed output path mismatch");
+                require(fs::file_size(activeDetails) <= 32 * 1024 * 1024, "Detailed output exceeds bounded trace size");
+                const auto analysis = readJson(activeDetails);
+                require(analysis.at("schemaVersion") == 1 && analysis.at("mode") == "detailed" && analysis.at("suiteHash") == result.at("suiteHash") && analysis.at("candidates").size() == suite.at("scenarios").size(), "Invalid detailed analysis identity");
+                for (size_t c = 0; c < analysis.at("candidates").size(); ++c) {
+                    const auto& candidate = analysis.at("candidates")[c];
+                    require(candidate.at("candidateId") == suite.at("scenarios")[c].at("id") && candidate.at("fights") == request.totalFights / suite.at("scenarios").size(), "Detailed candidate identity mismatch");
+                    require(candidate.at("timeline").at("reportReplay") == "bit-identical", "Timeline replay failed");
+                }
+            }
             timing["clientWallMs"] = milliseconds(started);
             if (!previous.is_null()) {
                 for (const char* key : {"results", "suiteHash", "inputSnapshotHash", "kernelHashes", "optimization"}) require(result.at(key) == previous.at(key), std::string("Repeated native result changed: ") + key);
@@ -200,7 +234,7 @@ void NativeJob::execute(JobRequest request) {
             }
             previous = result;
             summary["runs"].push_back({{"nativeResult", activeOutput.filename().string()}, {"timing", timing}, {"native", result}});
-            activeOutput.clear(); activeRaw.clear(); fs::remove_all(workDirectory); workDirectory.clear();
+            activeOutput.clear(); activeRaw.clear(); activeDetails.clear(); fs::remove_all(workDirectory); workDirectory.clear();
             saveJson(request.outputDirectory / "summary.json", summary);
             { std::lock_guard<std::mutex> lock(mutex_); state_.completedFights = request.totalFights; state_.summary = summary; }
         }
@@ -218,6 +252,7 @@ void NativeJob::execute(JobRequest request) {
         std::error_code ignored;
         if (!activeOutput.empty()) fs::remove(activeOutput, ignored);
         if (!activeRaw.empty()) fs::remove(activeRaw, ignored);
+        if (!activeDetails.empty()) { fs::remove(activeDetails, ignored); fs::remove(activeDetails.string() + ".tmp", ignored); }
         if (!workDirectory.empty()) fs::remove_all(workDirectory, ignored);
         summary["status"] = cancelRequested_.load() ? "cancelled" : "failed";
         summary["error"] = error.what(); summary.erase("medians");

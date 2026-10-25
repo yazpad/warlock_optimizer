@@ -10,13 +10,14 @@ local json=require('sim.common.json')
 local layout=require('sim.classes.warlock.generated.layout')
 local suite=require('data.validation.forever_baseline')
 local specialize=require('sim.classes.warlock.specialize')
-local opts={mode='fast',totalFights=1000000,batchSize=65536,warmupBatches=2,subgroupSize=32,specialized=true,requireGpu=true,output='artifacts/native-million.json'}
-local valueFlags={['--mode']='mode',['--total-fights']='totalFights',['--iterations']='iterations',['--batch-size']='batchSize',['--warmup-batches']='warmupBatches',['--subgroup-size']='subgroupSize',['--output']='output',['--raw-output']='rawOutput',['--work-dir']='workDir'}
+local opts={mode='fast',totalFights=1000000,batchSize=65536,warmupBatches=2,subgroupSize=32,specialized=true,requireGpu=true,histogram=true,output='artifacts/native-million.json'}
+local valueFlags={['--details-output']='detailsOutput',['--suite']='suitePath',['--mode']='mode',['--total-fights']='totalFights',['--iterations']='iterations',['--batch-size']='batchSize',['--warmup-batches']='warmupBatches',['--subgroup-size']='subgroupSize',['--output']='output',['--raw-output']='rawOutput',['--work-dir']='workDir'}
 local numeric={totalFights=true,iterations=true,batchSize=true,warmupBatches=true,subgroupSize=true}
 local i=1
 while i<=#arg do
  local a=arg[i];local key=valueFlags[a]
  if key then i=i+1;opts[key]=assert(arg[i],'Missing '..a);if numeric[key] then opts[key]=assert(tonumber(opts[key]),'Invalid '..a) end
+ elseif a=='--no-histogram' then opts.histogram=false
  elseif a=='--generic' then opts.specialized=false;opts.subgroupSize=nil
  elseif a=='--specialize-features' then opts.specialized=true
  elseif a=='--no-subgroup-size' then opts.subgroupSize=nil
@@ -30,14 +31,29 @@ local function integer(v,lo,hi,label) assert(type(v)=='number' and v==math.floor
 assert(opts.mode=='fast' or opts.mode=='detailed','Invalid mode')
 integer(opts.batchSize,1,65536,'batch size');integer(opts.warmupBatches,0,32,'warmup batches')
 if opts.subgroupSize then assert(opts.specialized,'Subgroup override requires specialization');assert(({[4]=true,[8]=true,[16]=true,[32]=true,[64]=true})[opts.subgroupSize],'Invalid subgroup size') end
+local suiteHash=iohelp.hashFile('data/validation/forever_baseline.json')
+assert(suiteHash==suite.suiteHash,'Stale generated suite; regenerate JSON and Lua together')
+if opts.suitePath then
+ local source=iohelp.read(opts.suitePath)
+ local custom=require('sim.common.json_input').decode(source)
+ assert(custom.schemaVersion==1 and custom.id=='editor-warlock-v1' and #custom.scenarios==1,'Invalid custom suite')
+ for p,h in pairs(suite.kernelHashes) do assert(custom.kernelHashes[p]==h,'Custom kernel identity mismatch') end
+ for _,s in ipairs(custom.scenarios) do
+  assert(type(s.id)=='string' and #s.id>0 and #s.id<=128,'Invalid candidate identity')
+  integer(s.duration,1,1800,'duration');assert(#s.packed==layout.configWords,'Invalid packed configuration')
+  for _,w in ipairs(s.packed) do integer(w,0,4294967295,'packed word') end
+  assert(s.packed[layout.endIndex]==s.duration*1000000,'Duration/config mismatch')
+ end
+ integer(custom.seed,0,4294967295,'seed')
+ suite={suiteId=custom.id,seed=custom.seed,kernelHashes=custom.kernelHashes,scenarios=custom.scenarios}
+ suiteHash=iohelp.hash(source)
+end
 local count=#suite.scenarios
 local iterations=opts.iterations or opts.totalFights/count
 integer(iterations,2,1048576,'iterations');local total=count*iterations
 integer(total,1,16777216,'total fights')
 local kernelHashes={}
 for p,expected in pairs(suite.kernelHashes) do kernelHashes[p]=iohelp.hashFile(p);assert(kernelHashes[p]==expected,'Stale suite kernel/layout: '..p) end
-local suiteHash=iohelp.hashFile('data/validation/forever_baseline.json')
-assert(suiteHash==suite.suiteHash,'Stale generated suite; regenerate JSON and Lua together')
 local words=opts.mode=='fast' and layout.fastWords or layout.detailedWords
 local maxDuration=0
 for _,s in ipairs(suite.scenarios) do maxDuration=math.max(maxDuration,s.duration) end
@@ -49,7 +65,7 @@ if not temp then temp=os.tmpname();os.remove(temp) end
 iohelp.run('mkdir '..iohelp.quote(temp))
 local function execute()
  local phase=now()
- local buildKey=iohelp.hash(iohelp.read('tools/vulkan_probe.c')..'cc -O2 -Wall -Wextra -Werror -lvulkan')
+ local buildKey=iohelp.hash(iohelp.read('tools/vulkan_probe.c')..iohelp.read('tools/dps_histogram.h')..'cc -O2 -Wall -Wextra -Werror -lvulkan')
  local probe='artifacts/.cache/probe-'..buildKey
  if not iohelp.exists(probe) then
   iohelp.run('cc -O2 -Wall -Wextra -Werror tools/vulkan_probe.c -lvulkan -o '..iohelp.quote(temp..'/probe'))
@@ -78,6 +94,7 @@ local function execute()
  iohelp.write(temp..'/params.bin',ffi.string(params,ffi.sizeof(params)))
  local function env(k,v) if v then ffi.C.setenv(k,tostring(v),1) else ffi.C.unsetenv(k) end end
  env('FASTSIM_WARMUP_BATCHES',opts.warmupBatches);env('FASTSIM_SUBGROUP_SIZE',opts.subgroupSize)
+ env('FASTSIM_DPS_HISTOGRAM',opts.histogram and '1' or '0')
  env('FASTSIM_REQUIRE_GPU',opts.requireGpu and '1');env('FASTSIM_PIPELINE_STATS_PATH',opts.pipelineStats and temp..'/stats.json')
  phase=now()
  local command={probe,spv,temp..'/configs.bin',temp..'/params.bin',opts.rawOutput or '-',words,opts.batchSize}
@@ -95,15 +112,28 @@ local function execute()
  end)
  assert(candidate==count,'C summary candidate count mismatch')
  assert(metric('totalFights')==total,'C fight count mismatch')
+ local details,detailsMs
+ if opts.mode=='detailed' then
+  local detailsStarted=now();print('Detailed analysis: tracing fight index 0 per candidate')
+  local timeline=require('tools.detailed_trace').run(generic,spv,probe,suite,temp)
+  local decoded=require('sim.common.json_input').decode(summaries)
+  local analysis=require('tools.detailed_analysis').build(decoded,suite,timeline)
+  analysis.traceSourceHash=iohelp.hashFile('tools/detailed_trace.lua');analysis.analysisSourceHash=iohelp.hashFile('tools/detailed_analysis.lua')
+  analysis.suiteHash=suiteHash;analysis.seed=suite.seed;analysis.traceShaderHash=timeline.shaderHash
+  local path=opts.detailsOutput or (opts.output..'.details.json')
+  iohelp.write(path..'.tmp',json.encode(analysis):gsub('"damage":{}','"damage":[]')..'\n');assert(os.rename(path..'.tmp',path),'Cannot save detailed analysis')
+  detailsMs=(now()-detailsStarted)*1000
+  details={path=path,traceShaderHash=timeline.shaderHash,traceCapacity=timeline.capacity,timelineFightIndex=0}
+ end
  local wallMs=(now()-started)*1000
  local variant=opts.specialized and 'shared-features' or 'generic'
  if opts.subgroupSize then variant=variant..'-wave'..opts.subgroupSize end
  local metadata={schemaVersion=1,classId='warlock',suiteId=suite.suiteId,suiteHash=suiteHash,kernelHashes=kernelHashes,
   inputSnapshotHash=iohelp.hash(json.encode({scenarios=suite.scenarios,iterations=iterations,seed=suite.seed})),
-  mode=opts.mode,status='complete',iterations=iterations,seed=suite.seed,
+  mode=opts.mode,status='complete',iterations=iterations,seed=suite.seed,details=details,
   optimization={variant=variant,features=features,genericShaderHash=genericHash,actualShaderHash=actualHash},
   runtime={backend='Vulkan',transport='native LuaJIT + C Vulkan engine',engineBuildKey=buildKey,nativeRunnerHash=iohelp.hashFile('tools/run_native.lua')},
-  timing={wallMs=wallMs,buildMs=buildMs,shaderCompileMs=shaderCompileMs,probeWallMs=probeMs,
+  timing={wallMs=wallMs,detailsMs=detailsMs,buildMs=buildMs,shaderCompileMs=shaderCompileMs,probeWallMs=probeMs,
    gpuComputeMs=gpuMs,executeReadbackMs=execMs,decodeSummaryMs=metric('cDecodeMs'),compileMs=metric('compileMs'),
    warmupMs=metric('warmupMs'),draws=metric('draws'),totalFights=total,warmupBatches=opts.warmupBatches,batchSize=opts.batchSize,
    gpuSimsPerSecond=gpuMs and gpuMs>0 and total*1000/gpuMs or nil,

@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include <vulkan/vulkan.h>
+#include "dps_histogram.h"
 #define CHECK(call)                                      \
   do                                                     \
   {                                                      \
@@ -210,6 +211,7 @@ typedef struct
   double m2;
   uint32_t maxHeap;
   double durationSec;
+  DpsHistogramCounters histogram;
   double totals[216];
   uint64_t totalsInt[216];
 } CandidateStats;
@@ -327,13 +329,110 @@ static void dump_pipeline_stats(VkDevice device, VkPipeline pipeline, const char
   if (fclose(file))
     fail("Cannot close pipeline statistics");
 }
+// Shared with the CPU benchmark: this is the actual report aggregation loop.
+static void aggregate_reports(const uint32_t* rawWords, uint32_t first, uint32_t n,
+    uint32_t words, uint32_t fightsPerConfig, uint32_t numConfigs,
+    CandidateStats* candStats, const ReportField* reportFields, size_t numReportFields,
+    int collectHistogram)
+{
+#if !FASTSIM_HISTOGRAM_ENABLED
+  (void)collectHistogram;
+#endif
+      for (uint32_t lane = 0; lane < n; lane++)
+      {
+        uint32_t globalLane = first + lane;
+        uint32_t cIdx = globalLane / fightsPerConfig;
+        if (cIdx >= numConfigs)
+          cIdx = numConfigs - 1;
+        CandidateStats* cs = &candStats[cIdx];
+        const uint32_t* w = rawWords + (size_t)lane * words;
+        uint32_t statusWord = w[1];
+        uint32_t done = statusWord & 0xFFFFu;
+        uint32_t highWater = statusWord >> 16u;
+        float totalDmg;
+        memcpy(&totalDmg, &w[0], sizeof(float));
+        if (done != 1u || highWater > 40u || !isfinite(totalDmg) || totalDmg < 0.0f)
+          fail("Invalid/incomplete fight in report buffer");
+        cs->count++;
+        double dps = (double)totalDmg / cs->durationSec;
+        double delta = dps - cs->mean;
+        cs->mean += delta / (double)cs->count;
+        cs->m2 += delta * (dps - cs->mean);
+#if FASTSIM_HISTOGRAM_ENABLED
+        if (collectHistogram) histogram_add(&cs->histogram, dps);
+#endif
+        if (highWater > cs->maxHeap)
+          cs->maxHeap = highWater;
+        if (words == 16)
+        {
+          // Fast-path unrolled accumulation for 16-word fast report
+          float f5, f6, f8, f11, f14, f15;
+          memcpy(&f5, &w[5], 4);
+          memcpy(&f6, &w[6], 4);
+          memcpy(&f8, &w[8], 4);
+          memcpy(&f11, &w[11], 4);
+          memcpy(&f14, &w[14], 4);
+          memcpy(&f15, &w[15], 4);
+          if (!isfinite(f5) || !isfinite(f6) || !isfinite(f8) || !isfinite(f11) || !isfinite(f14) || !isfinite(f15))
+            fail("Nonfinite float in fast report");
+          cs->totals[0] += (double)totalDmg;
+          cs->totalsInt[1] += w[2];
+          cs->totalsInt[2] += w[3] & 0xFFFFu;
+          cs->totalsInt[3] += w[3] >> 16u;
+          cs->totalsInt[4] += w[4] & 0xFFFFu;
+          cs->totalsInt[5] += w[4] >> 16u;
+          cs->totals[6] += (double)f5;
+          cs->totals[7] += (double)f6;
+          cs->totalsInt[8] += w[7] & 0xFFFFu;
+          cs->totalsInt[9] += w[7] >> 16u;
+          cs->totals[10] += (double)f8;
+          cs->totalsInt[11] += w[9] & 0xFFFFu;
+          cs->totalsInt[12] += w[9] >> 16u;
+          cs->totalsInt[13] += w[10] & 0xFFFFu;
+          cs->totalsInt[14] += w[10] >> 16u;
+          cs->totals[15] += (double)f11;
+          cs->totalsInt[16] += w[12] & 0xFFFFu;
+          cs->totalsInt[17] += w[12] >> 16u;
+          cs->totalsInt[18] += w[13] & 0xFFFFu;
+          cs->totalsInt[19] += w[13] >> 16u;
+          cs->totals[20] += (double)f14;
+          cs->totals[21] += (double)f15;
+        }
+        else
+        {
+          for (size_t fi = 0; fi < numReportFields; fi++)
+          {
+            uint32_t raw = w[reportFields[fi].word];
+            if (reportFields[fi].type == 'f')
+            {
+              float fv;
+              memcpy(&fv, &raw, sizeof(float));
+              if (!isfinite(fv))
+                fail("Nonfinite float in detailed report");
+              cs->totals[fi] += (double)fv;
+            }
+            else
+            {
+              uint32_t uv = reportFields[fi].part == 'l'   ? (raw & 0xFFFFu)
+                            : reportFields[fi].part == 'h' ? (raw >> 16u)
+                                                           : raw;
+              if (reportFields[fi].type == 'r')
+                cs->totals[fi] += (double)uv / 65535.0;
+              else
+                cs->totalsInt[fi] += uv;
+            }
+          }
+        }
+      }
+}
+
 int main(int argc, char** argv)
 {
   if (argc != 7)
     fail("Usage: vulkan-probe shader.spv configs.bin params.bin output.bin resultWords batchSize");
   char* end = NULL;
   unsigned long parsed = strtoul(argv[5], &end, 10);
-  if (!end || *end || parsed < 1 || parsed > 4096)
+  if (!end || *end || parsed < 1 || parsed > 131072)
     fail("Invalid report words");
   uint32_t words = (uint32_t)parsed;
   parsed = strtoul(argv[6], &end, 10);
@@ -623,6 +722,8 @@ int main(int argc, char** argv)
     reportFields = DETAILED_FIELDS;
     numReportFields = sizeof(DETAILED_FIELDS) / sizeof(DETAILED_FIELDS[0]);
   }
+  const char* histogramText = getenv("FASTSIM_DPS_HISTOGRAM");
+  const int collectHistogram = FASTSIM_HISTOGRAM_ENABLED && (!histogramText || strcmp(histogramText, "0") != 0);
   CandidateStats* candStats = NULL;
   if (reportFields)
   {
@@ -631,6 +732,8 @@ int main(int argc, char** argv)
       fail("Stats allocation failed");
     for (uint32_t cIdx = 0; cIdx < numConfigs; cIdx++)
     {
+      candStats[cIdx].histogram.upper = 1024;
+      candStats[cIdx].histogram.scale = (double)FASTSIM_HISTOGRAM_BINS / 1024;
       uint32_t endMicros = configWords[cIdx * 229 + 16];
       candStats[cIdx].durationSec = (double)endMicros / 1000000.0;
       if (candStats[cIdx].durationSec <= 0.0)
@@ -710,90 +813,8 @@ int main(int argc, char** argv)
     if (candStats)
     {
       double decStart = seconds();
-      const uint32_t* rawWords = (const uint32_t*)buffers[2].mapped;
-      for (uint32_t lane = 0; lane < n; lane++)
-      {
-        uint32_t globalLane = first + lane;
-        uint32_t cIdx = globalLane / fightsPerConfig;
-        if (cIdx >= numConfigs)
-          cIdx = numConfigs - 1;
-        CandidateStats* cs = &candStats[cIdx];
-        const uint32_t* w = rawWords + (size_t)lane * words;
-        uint32_t statusWord = w[1];
-        uint32_t done = statusWord & 0xFFFFu;
-        uint32_t highWater = statusWord >> 16u;
-        float totalDmg;
-        memcpy(&totalDmg, &w[0], sizeof(float));
-        if (done != 1u || highWater > 40u || !isfinite(totalDmg) || totalDmg < 0.0f)
-          fail("Invalid/incomplete fight in report buffer");
-        cs->count++;
-        double dps = (double)totalDmg / cs->durationSec;
-        double delta = dps - cs->mean;
-        cs->mean += delta / (double)cs->count;
-        cs->m2 += delta * (dps - cs->mean);
-        if (highWater > cs->maxHeap)
-          cs->maxHeap = highWater;
-        if (words == 16)
-        {
-          // Fast-path unrolled accumulation for 16-word fast report
-          float f5, f6, f8, f11, f14, f15;
-          memcpy(&f5, &w[5], 4);
-          memcpy(&f6, &w[6], 4);
-          memcpy(&f8, &w[8], 4);
-          memcpy(&f11, &w[11], 4);
-          memcpy(&f14, &w[14], 4);
-          memcpy(&f15, &w[15], 4);
-          if (!isfinite(f5) || !isfinite(f6) || !isfinite(f8) || !isfinite(f11) || !isfinite(f14) || !isfinite(f15))
-            fail("Nonfinite float in fast report");
-          cs->totals[0] += (double)totalDmg;
-          cs->totalsInt[1] += w[2];
-          cs->totalsInt[2] += w[3] & 0xFFFFu;
-          cs->totalsInt[3] += w[3] >> 16u;
-          cs->totalsInt[4] += w[4] & 0xFFFFu;
-          cs->totalsInt[5] += w[4] >> 16u;
-          cs->totals[6] += (double)f5;
-          cs->totals[7] += (double)f6;
-          cs->totalsInt[8] += w[7] & 0xFFFFu;
-          cs->totalsInt[9] += w[7] >> 16u;
-          cs->totals[10] += (double)f8;
-          cs->totalsInt[11] += w[9] & 0xFFFFu;
-          cs->totalsInt[12] += w[9] >> 16u;
-          cs->totalsInt[13] += w[10] & 0xFFFFu;
-          cs->totalsInt[14] += w[10] >> 16u;
-          cs->totals[15] += (double)f11;
-          cs->totalsInt[16] += w[12] & 0xFFFFu;
-          cs->totalsInt[17] += w[12] >> 16u;
-          cs->totalsInt[18] += w[13] & 0xFFFFu;
-          cs->totalsInt[19] += w[13] >> 16u;
-          cs->totals[20] += (double)f14;
-          cs->totals[21] += (double)f15;
-        }
-        else
-        {
-          for (size_t fi = 0; fi < numReportFields; fi++)
-          {
-            uint32_t raw = w[reportFields[fi].word];
-            if (reportFields[fi].type == 'f')
-            {
-              float fv;
-              memcpy(&fv, &raw, sizeof(float));
-              if (!isfinite(fv))
-                fail("Nonfinite float in detailed report");
-              cs->totals[fi] += (double)fv;
-            }
-            else
-            {
-              uint32_t uv = reportFields[fi].part == 'l'   ? (raw & 0xFFFFu)
-                            : reportFields[fi].part == 'h' ? (raw >> 16u)
-                                                           : raw;
-              if (reportFields[fi].type == 'r')
-                cs->totals[fi] += (double)uv / 65535.0;
-              else
-                cs->totalsInt[fi] += uv;
-            }
-          }
-        }
-      }
+      aggregate_reports((const uint32_t*)buffers[2].mapped, first, n, words,
+          fightsPerConfig, numConfigs, candStats, reportFields, numReportFields, collectHistogram);
       decodeMs += (seconds() - decStart) * 1000;
     }
     first += n;
@@ -850,7 +871,18 @@ int main(int argc, char** argv)
         else
           printf("\"%s\":%.17g", reportFields[fi].name, cs->totals[fi]);
       }
-      printf("}}");
+      printf("}");
+      if (collectHistogram)
+      {
+        printf(",\"histogram\":{\"low\":0,\"high\":%.17g,\"bins\":[", cs->histogram.upper);
+        for (unsigned b = 0; b < FASTSIM_HISTOGRAM_BINS; ++b)
+        {
+          if (b) putchar(',');
+          printf("%u", cs->histogram.bins[b]);
+        }
+        printf("]}");
+      }
+      printf("}");
     }
     printf("]");
     free(candStats);

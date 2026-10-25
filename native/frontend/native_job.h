@@ -21,7 +21,12 @@ struct JobRequest {
     bool wave32 = true;
     bool allowSoftware = false;
     bool rawReports = false;
+    bool histogram = false;
+    std::string mode = "fast";
     std::string presentation = "headless";
+    std::string suiteSource; // Empty selects the unchanged frozen benchmark.
+    std::string suiteHash;
+    std::string candidateSource;
 };
 struct JobSnapshot {
     std::string status = "idle";

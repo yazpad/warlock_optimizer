@@ -1,0 +1,505 @@
+{
+  "schemaVersion": 1,
+  "cpu": {
+    "model": "AMD Ryzen 9 9950X 16-Core Processor",
+    "affinityCpu": 0,
+    "scope": "Actual production C aggregation of 1,000,000 synthetic valid fast reports; excludes GPU execution and process startup",
+    "warmupPassesPerProcess": 2,
+    "timedPassesPerProcess": 9,
+    "pairs": 9,
+    "measurements": [
+      {
+        "pair": 1,
+        "collection": false,
+        "fights": 1000000,
+        "milliseconds": [
+          7.353829,
+          7.353609,
+          7.354480001,
+          7.36623,
+          7.369849,
+          7.3683,
+          7.38825,
+          7.365189,
+          7.3711
+        ]
+      },
+      {
+        "pair": 1,
+        "collection": true,
+        "fights": 1000000,
+        "milliseconds": [
+          7.519872,
+          7.511881,
+          7.511442,
+          7.508621,
+          7.505051,
+          7.520061999,
+          7.521461,
+          7.520472,
+          7.511011
+        ]
+      },
+      {
+        "pair": 2,
+        "collection": true,
+        "fights": 1000000,
+        "milliseconds": [
+          7.525352,
+          7.529781,
+          7.527152001,
+          7.526042,
+          7.794794001,
+          7.517342,
+          7.526671,
+          7.535711999,
+          7.527222
+        ]
+      },
+      {
+        "pair": 2,
+        "collection": false,
+        "fights": 1000000,
+        "milliseconds": [
+          7.41236,
+          7.408230001,
+          7.406780001,
+          7.410050999,
+          7.40822,
+          7.40937,
+          7.40745,
+          7.40903,
+          7.41361
+        ]
+      },
+      {
+        "pair": 3,
+        "collection": false,
+        "fights": 1000000,
+        "milliseconds": [
+          7.555632,
+          7.549481,
+          7.558072,
+          7.558341999,
+          7.557872,
+          7.554322,
+          7.553482,
+          7.550302001,
+          7.558532
+        ]
+      },
+      {
+        "pair": 3,
+        "collection": true,
+        "fights": 1000000,
+        "milliseconds": [
+          7.523012,
+          7.509601,
+          7.500411,
+          7.500662,
+          7.512431,
+          7.499801,
+          7.502631001,
+          7.487301,
+          7.495451
+        ]
+      },
+      {
+        "pair": 4,
+        "collection": true,
+        "fights": 1000000,
+        "milliseconds": [
+          7.518081,
+          7.516592,
+          7.513911,
+          7.521802,
+          7.507401,
+          7.519271,
+          7.506781,
+          7.504882,
+          7.511281
+        ]
+      },
+      {
+        "pair": 4,
+        "collection": false,
+        "fights": 1000000,
+        "milliseconds": [
+          7.419741,
+          7.432259999,
+          7.418839999,
+          7.41486,
+          7.413691,
+          7.42052,
+          7.41954,
+          7.41628,
+          7.414161
+        ]
+      },
+      {
+        "pair": 5,
+        "collection": false,
+        "fights": 1000000,
+        "milliseconds": [
+          7.412669999,
+          7.420531,
+          7.4199,
+          7.42019,
+          7.41527,
+          7.41763,
+          7.42427,
+          7.421609999,
+          7.41914
+        ]
+      },
+      {
+        "pair": 5,
+        "collection": true,
+        "fights": 1000000,
+        "milliseconds": [
+          7.531621,
+          7.531902,
+          7.543462,
+          7.551481,
+          7.532462,
+          7.542612,
+          7.545492,
+          7.546651001,
+          7.542341
+        ]
+      },
+      {
+        "pair": 6,
+        "collection": true,
+        "fights": 1000000,
+        "milliseconds": [
+          7.723584,
+          7.728384,
+          7.730594,
+          7.735914,
+          7.734454,
+          7.739914,
+          7.751974,
+          7.740804,
+          7.728134
+        ]
+      },
+      {
+        "pair": 6,
+        "collection": false,
+        "fights": 1000000,
+        "milliseconds": [
+          7.621352999,
+          7.616502,
+          7.620573,
+          7.616543,
+          7.621632,
+          7.624183,
+          7.617973,
+          7.617782,
+          7.616543
+        ]
+      },
+      {
+        "pair": 7,
+        "collection": false,
+        "fights": 1000000,
+        "milliseconds": [
+          7.562212,
+          7.561902,
+          7.565882,
+          7.559432001,
+          7.561622,
+          7.562482,
+          7.559492,
+          7.560552,
+          7.557892
+        ]
+      },
+      {
+        "pair": 7,
+        "collection": true,
+        "fights": 1000000,
+        "milliseconds": [
+          7.538601,
+          7.552612,
+          7.645623,
+          7.547642001,
+          7.542662,
+          7.555581999,
+          7.555771,
+          7.534771999,
+          7.547592
+        ]
+      },
+      {
+        "pair": 8,
+        "collection": true,
+        "fights": 1000000,
+        "milliseconds": [
+          7.727944,
+          7.729344,
+          7.732863,
+          7.734794,
+          7.732335,
+          7.732074,
+          7.744594001,
+          7.723154,
+          7.714024
+        ]
+      },
+      {
+        "pair": 8,
+        "collection": false,
+        "fights": 1000000,
+        "milliseconds": [
+          7.42911,
+          7.42162,
+          7.437471,
+          7.42063,
+          7.42449,
+          7.423711,
+          7.43676,
+          7.428600999,
+          7.42354
+        ]
+      },
+      {
+        "pair": 9,
+        "collection": false,
+        "fights": 1000000,
+        "milliseconds": [
+          7.40589,
+          7.406279999,
+          7.409350001,
+          7.41138,
+          7.41521,
+          7.41219,
+          7.40882,
+          7.41465,
+          7.41101
+        ]
+      },
+      {
+        "pair": 9,
+        "collection": true,
+        "fights": 1000000,
+        "milliseconds": [
+          7.699794,
+          7.720804,
+          7.715524,
+          7.702293,
+          7.718984,
+          7.711294,
+          7.706534,
+          7.703204,
+          7.725744
+        ]
+      }
+    ],
+    "mediansMs": {
+      "disabled": 7.4199,
+      "enabled": 7.542612
+    },
+    "addedMs": 0.12271199999999993,
+    "ratio": 1.016538228278009
+  },
+  "compiler": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "compilerFlags": "-O2 -Wall -Wextra -Werror -lvulkan",
+  "sourceHashes": {
+    "tools/vulkan_probe.c": "b3d833234a79fe1ba1c939eb12b0a2be33f532d2fbc5f75805f3d8b738e85154",
+    "tools/dps_histogram.h": "cb5130422ea29f5a50cffcacb5e98a6059f1ac24a55abd142ef150ecb5644e2e",
+    "validation/benchmark_histogram.c": "9452fada0ac2ce6c67e533d5b16a4bc8d81e3aa256c17bc3012134a14085bf83"
+  },
+  "vulkan": {
+    "scope": "Full native runs; software diagnostics do not establish hardware performance",
+    "softwareDiagnostic": false,
+    "totalFights": 1000000,
+    "pairs": 9,
+    "measurements": [
+      {
+        "pair": 1,
+        "enabled": false,
+        "gpuMs": 640.18656,
+        "aggregationMs": 12.772,
+        "nativeWallMs": 982.0131449996552,
+        "steadyMs": 655.615,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 1,
+        "enabled": true,
+        "gpuMs": 636.64008,
+        "aggregationMs": 12.024,
+        "nativeWallMs": 975.8953219989053,
+        "steadyMs": 652.136,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 2,
+        "enabled": true,
+        "gpuMs": 636.84292,
+        "aggregationMs": 11.953,
+        "nativeWallMs": 972.4261499995919,
+        "steadyMs": 651.0269999999999,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 2,
+        "enabled": false,
+        "gpuMs": 637.7666,
+        "aggregationMs": 11.35,
+        "nativeWallMs": 982.8510570005164,
+        "steadyMs": 651.9780000000001,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 3,
+        "enabled": false,
+        "gpuMs": 637.33484,
+        "aggregationMs": 12.845,
+        "nativeWallMs": 977.0278569994844,
+        "steadyMs": 653.373,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 3,
+        "enabled": true,
+        "gpuMs": 635.42984,
+        "aggregationMs": 14.108,
+        "nativeWallMs": 996.0947990002751,
+        "steadyMs": 653.261,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 4,
+        "enabled": true,
+        "gpuMs": 637.3674,
+        "aggregationMs": 12.358,
+        "nativeWallMs": 980.3625370004738,
+        "steadyMs": 652.564,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 4,
+        "enabled": false,
+        "gpuMs": 636.12632,
+        "aggregationMs": 11.871,
+        "nativeWallMs": 974.9237120013277,
+        "steadyMs": 650.664,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 5,
+        "enabled": false,
+        "gpuMs": 638.582,
+        "aggregationMs": 11.844,
+        "nativeWallMs": 986.7668250008137,
+        "steadyMs": 652.6080000000001,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 5,
+        "enabled": true,
+        "gpuMs": 638.16168,
+        "aggregationMs": 11.7,
+        "nativeWallMs": 984.5758000010392,
+        "steadyMs": 652.2710000000001,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 6,
+        "enabled": true,
+        "gpuMs": 635.71008,
+        "aggregationMs": 11.872,
+        "nativeWallMs": 980.2112680008577,
+        "steadyMs": 650.834,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 6,
+        "enabled": false,
+        "gpuMs": 637.65032,
+        "aggregationMs": 11.898,
+        "nativeWallMs": 982.5512360002904,
+        "steadyMs": 652.722,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 7,
+        "enabled": false,
+        "gpuMs": 637.63952,
+        "aggregationMs": 12.723,
+        "nativeWallMs": 985.9647380017122,
+        "steadyMs": 653.803,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 7,
+        "enabled": true,
+        "gpuMs": 638.23712,
+        "aggregationMs": 11.931,
+        "nativeWallMs": 981.1421609992976,
+        "steadyMs": 653.077,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 8,
+        "enabled": true,
+        "gpuMs": 635.71204,
+        "aggregationMs": 11.663,
+        "nativeWallMs": 984.3626290003158,
+        "steadyMs": 650.792,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 8,
+        "enabled": false,
+        "gpuMs": 635.67632,
+        "aggregationMs": 12.669,
+        "nativeWallMs": 980.6436539984134,
+        "steadyMs": 651.524,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 9,
+        "enabled": false,
+        "gpuMs": 637.74088,
+        "aggregationMs": 12.063,
+        "nativeWallMs": 981.5701560000889,
+        "steadyMs": 652.376,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      },
+      {
+        "pair": 9,
+        "enabled": true,
+        "gpuMs": 635.89688,
+        "aggregationMs": 12.918,
+        "nativeWallMs": 999.9143700006243,
+        "steadyMs": 652.145,
+        "device": "AMD Radeon RX 5600 XT (RADV NAVI10)"
+      }
+    ],
+    "replay": {
+      "status": "passed",
+      "fights": 1000000,
+      "reportWords": 16000000,
+      "allHistogramCountsMatch": true
+    },
+    "medians": {
+      "disabled": {
+        "gpuMs": 637.65032,
+        "aggregationMs": 12.063,
+        "nativeWallMs": 982.0131449996552,
+        "steadyMs": 652.6080000000001
+      },
+      "enabled": {
+        "gpuMs": 636.64008,
+        "aggregationMs": 11.953,
+        "nativeWallMs": 981.1421609992976,
+        "steadyMs": 652.145
+      }
+    }
+  },
+  "interpretation": "Nine alternating million-fight hardware pairs: no measurable native-wall or GPU slowdown. Small favorable median differences are run-to-run variation, not speedup claims. Isolated production CPU aggregation shows a small collection cost; synthetic timings do not substitute for native hardware timing."
+}

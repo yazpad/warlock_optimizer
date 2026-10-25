@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "device": "AMD Radeon RX 5600 XT (RADV NAVI10)",
+  "scope": "Detailed damage/uptime aggregates and first-fight event replay; fast baseline guard is one million-fight hardware run, not a new paired performance claim",
+  "detailedFights": 100,
+  "candidates": [
+    {
+      "candidateId": "sm_ruin__human__baseline",
+      "fights": 20,
+      "damageSources": 8,
+      "uptimeEffects": 12,
+      "averageDamageRoundingDifference": 0.00032958984375,
+      "timelineRecords": 916,
+      "timelineReplay": "bit-identical",
+      "timelineDamageReconciles": true,
+      "timelineTruncated": false
+    },
+    {
+      "candidateId": "aff_wrack__human__baseline",
+      "fights": 20,
+      "damageSources": 8,
+      "uptimeEffects": 12,
+      "averageDamageRoundingDifference": -0.021044921875,
+      "timelineRecords": 1035,
+      "timelineReplay": "bit-identical",
+      "timelineDamageReconciles": true,
+      "timelineTruncated": false
+    },
+    {
+      "candidateId": "destro__human__baseline",
+      "fights": 20,
+      "damageSources": 9,
+      "uptimeEffects": 12,
+      "averageDamageRoundingDifference": 0.020989990234375,
+      "timelineRecords": 836,
+      "timelineReplay": "bit-identical",
+      "timelineDamageReconciles": true,
+      "timelineTruncated": false
+    },
+    {
+      "candidateId": "demo_shadow_brand__human__baseline",
+      "fights": 20,
+      "damageSources": 10,
+      "uptimeEffects": 12,
+      "averageDamageRoundingDifference": -0.08685302734375,
+      "timelineRecords": 814,
+      "timelineReplay": "bit-identical",
+      "timelineDamageReconciles": true,
+      "timelineTruncated": false
+    },
+    {
+      "candidateId": "demo_fire_brand__human__baseline",
+      "fights": 20,
+      "damageSources": 8,
+      "uptimeEffects": 12,
+      "averageDamageRoundingDifference": -0.0793701171875,
+      "timelineRecords": 871,
+      "timelineReplay": "bit-identical",
+      "timelineDamageReconciles": true,
+      "timelineTruncated": false
+    }
+  ],
+  "sourceHashes": {
+    "sim/classes/warlock/generated/fast.glsl": "18d7fdd02c50bbb56f0bcd0eedd22c9305ffa7fe1f3968aff410725fc69978eb",
+    "sim/classes/warlock/generated/detailed.glsl": "fa3873417296082494f88a329edf1607c27972db6991db3973c9ad8feed580ca",
+    "tools/detailed_trace.lua": "d17ab970665045fa567a38b2f473e9e74b1316b5d78cc1de7d02fa0c9a31389c",
+    "tools/detailed_analysis.lua": "d684f08b2615c544cf5fdaf0775bda6cb87c289cded8110c2df54185d719e337"
+  },
+  "artifacts": "artifacts/detailed-hardware-validation",
+  "fastGuard": {
+    "fights": 1000000,
+    "noDetailedOutput": true,
+    "archivedResultsMatch": true,
+    "gpuFightsPerSecond": 1566238.5134416781
+  },
+  "longFight": {
+    "seconds": 1800,
+    "stored": 8192,
+    "total": 8611,
+    "truncated": true,
+    "replay": "bit-identical"
+  }
+}

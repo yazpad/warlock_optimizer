@@ -9,8 +9,9 @@ cli(()=>{
   const k=args.shift();
   if(k==='--live-ui'){visible=true;continue;}
   if(k==='--allow-software'){software=true;forwarded.push(k);continue;}
-  if(k==='--no-subgroup-size'||k==='--generic'){forwarded.push(k);continue;}
+  if(k==='--no-subgroup-size'||k==='--generic'||k==='--no-histogram'){forwarded.push(k);continue;}
   const v=args.shift();check(v,'Missing '+k);
+  if(k==='--candidate'){forwarded.push(k,path.resolve(v));continue;}
   if(k==='--output-dir')directory=path.resolve(v);else{check(k in opts,'Unknown option: '+k);opts[k]=v;}
  }
  const pairs=Number(opts['--pairs']);check(Number.isInteger(pairs)&&pairs>=1&&pairs<=10,'pairs must be 1..10');

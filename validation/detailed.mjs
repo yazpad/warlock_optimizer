@@ -1,0 +1,28 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {catalog} from '../tools/editor_config.mjs';
+import {run,check,readJson,sha} from '../tools/tooling.mjs';
+const fastFile='sim/classes/warlock/generated/fast.glsl',detailedFile='sim/classes/warlock/generated/detailed.glsl';
+const before=[fastFile,detailedFile].map(p=>sha(fs.readFileSync(p)));
+const dir=fs.mkdtempSync(path.resolve('artifacts/detailed-validation-'));
+const candidate=structuredClone(catalog().presets[0].candidate);candidate.encounter.duration=5;
+const file=path.join(dir,'candidate.json');fs.writeFileSync(file,JSON.stringify(candidate));
+const evaluate=(mode)=>{
+ const output=path.join(dir,mode),args=['--headless','--candidate',file,'--total-fights','2','--runs','1','--warmup-batches','0','--allow-software','--no-subgroup-size','--output-dir',output];
+ if(mode==='detailed')args.push('--detailed');run('./tools/run.sh',args);
+ const summary=readJson(path.join(output,'summary.json'));check(summary.status==='complete','Detailed job failed');return summary.runs[0].native;
+};
+const fast=evaluate('fast'),detailed=evaluate('detailed');
+check(!fast.details && detailed.details,'Detailed diagnostics leaked into fast mode');
+check(fast.results[0].meanDps===detailed.results[0].meanDps,'Detailed mode changed fight DPS');
+const data=readJson(detailed.details.path),c=data.candidates[0],timeline=c.timeline;
+check(c.fights===2 && c.duration===5 && c.damage.length>0 && c.uptimes.length===12,'Missing detailed counters');
+check(Math.abs(c.damage.reduce((n,r)=>n+r.damage,0)-c.damageReconciliation.total)<.01,'Damage breakdown does not reconcile');
+for(const uptime of c.uptimes)check(uptime.fraction>=0 && uptime.fraction<=1 && Math.abs(uptime.seconds-uptime.fraction*c.duration)<1e-6,'Invalid uptime');
+check(timeline.reportReplay==='bit-identical' && !timeline.truncated && timeline.fightIndex===0,'Timeline must replay the real first fight');
+check(timeline.events.length===timeline.recordCount && timeline.events.at(-1).kind===13 && timeline.events.at(-1).time===5,'Incomplete event timeline');
+for(let i=1;i<timeline.events.length;i++)check(timeline.events[i].time>=timeline.events[i-1].time,'Out-of-order timeline');
+check(Math.abs(timeline.events.reduce((n,e)=>n+e.damage,0)-timeline.events.at(-1).totalDamage)<.01,'Timeline damage does not reconcile');
+check([fastFile,detailedFile].every((p,i)=>sha(fs.readFileSync(p))===before[i]),'Pinned simulation sources changed');
+console.log('PASS: actual detailed job, damage/uptime/timeline, first-fight exact replay and unchanged fast mode');
+console.log('Saved',dir);
