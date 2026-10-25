@@ -33,8 +33,11 @@ const input={apiVersion:2,player:{apiVersion:2,name:'Fixture',class:'ClassWarloc
  warlock:{options:{classOptions:{summon:'Succubus',armor:'NoArmor',sacrificedDemon:'NoSummon',curseOptions:'NoCurse'}}},
  rotation:{type:'TypeAPL',priorityList:[{action:{castSpell:{spellId:{spellId:11689}},condition:{cmp:{op:'OpLe',lhs:{currentManaPercent:{}},rhs:{const:{val:'25%'}}}}}},{action:{castSpell:{spellId:{spellId:25307}}}}]}},encounter:{duration:180,targets:[{level:63}]}};
 const imported=importBuild(input);assert.equal(imported.classOptions.race,'HUMAN');assert.ok(prepare(imported).rows.length>=2);
-const bad=structuredClone(input);bad.player.equipment.items=[{id:123}];assert.throws(()=>importBuild(bad),/gear/);
-bad.player.equipment.items=[];bad.player.class='ClassMage';assert.throws(()=>importBuild(bad),/Warlock/);
+const withGear=structuredClone(input);withGear.player.equipment.items=[{id:19379},{id:19682,enchant:2504}];
+const importedWithGear=importBuild(withGear);
+assert.equal(importedWithGear.stats.spellPower, 44 + 27 + 30);
+assert.equal(importedWithGear.stats.hit, 4.0);
+const bad=structuredClone(input);bad.player.class='ClassMage';assert.throws(()=>importBuild(bad),/Warlock/);
 bad.player.class='ClassWarlock';bad.raidBuffs={bloodlust:true};assert.throws(()=>importBuild(bad),/raid buff/);
 bad.raidBuffs={};bad.player.rotation.priorityList[0].action={castSpell:{spellId:{spellId:12345}}};assert.throws(()=>importBuild(bad),/unsupported APL/i);
 // Reordering complete JSON representations has no effect on the packed model.

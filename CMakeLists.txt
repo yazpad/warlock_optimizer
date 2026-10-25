@@ -20,7 +20,7 @@ add_executable(fastsim-histogram-test validation/dps_histogram.cpp)
 target_link_libraries(fastsim-histogram-test PRIVATE fastsim_jobs)
 add_test(NAME dps_histogram COMMAND fastsim-histogram-test)
 if(FASTSIM_BUILD_GUI)
-  set(_frontend_sources tools/detailed_trace.lua tools/detailed_analysis.lua native/ui/detailed_view.cpp native/ui/detailed_view.h native/frontend/dps_histogram.cpp native/frontend/dps_histogram.h native/ui/editor.cpp native/ui/editor.h tools/editor_config.mjs native/ui/main.cpp native/frontend/native_job.cpp native/frontend/native_job.h CMakeLists.txt third_party/imgui/SHA256SUMS)
+  set(_frontend_sources tools/detailed_trace.lua tools/detailed_analysis.lua native/ui/detailed_view.cpp native/ui/detailed_view.h native/frontend/dps_histogram.cpp native/frontend/dps_histogram.h native/ui/editor.cpp native/ui/editor.h tools/editor_config.mjs native/ui/main.cpp native/frontend/native_job.cpp native/frontend/native_job.h CMakeLists.txt third_party/imgui/SHA256SUMS third_party/implot/SHA256SUMS)
   file(GLOB_RECURSE _editor_inputs CONFIGURE_DEPENDS policies/warlock/source/* assets/icons/*)
   list(APPEND _frontend_sources ${_editor_inputs})
   set(_frontend_hashes "")
@@ -44,8 +44,9 @@ if(FASTSIM_BUILD_GUI)
   add_library(imgui STATIC
     third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
     third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
-    third_party/imgui/backends/imgui_impl_sdl3.cpp third_party/imgui/backends/imgui_impl_opengl3.cpp)
-  target_include_directories(imgui PUBLIC third_party/imgui third_party/imgui/backends)
+    third_party/imgui/backends/imgui_impl_sdl3.cpp third_party/imgui/backends/imgui_impl_opengl3.cpp
+    third_party/implot/implot.cpp third_party/implot/implot_items.cpp)
+  target_include_directories(imgui PUBLIC third_party/imgui third_party/imgui/backends third_party/implot)
   target_link_libraries(imgui PUBLIC SDL3::SDL3 OpenGL::GL ${CMAKE_DL_LIBS})
   add_executable(fastsim-imgui native/ui/main.cpp native/ui/editor.cpp native/ui/detailed_view.cpp)
   target_link_libraries(fastsim-imgui PRIVATE fastsim_jobs imgui PNG::PNG)

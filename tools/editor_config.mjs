@@ -15,6 +15,7 @@ export const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'
 const read=p=>JSON.parse(fs.readFileSync(path.join(root,p),'utf8'));
 const frozen=read('data/validation/forever_baseline.json');
 const manifest=read('sim/classes/warlock/generated/manifest.json');
+const gearDb=fs.existsSync(path.join(root,'data/gear_database.json'))?read('data/gear_database.json'):{items:{},enchants:{}};
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const buffKeys=['giftOfTheWild','greaterBlessingOfWisdom','improvedManaSpringTotem','prayerOfFortitude','prayerOfSpirit','moonkinAura','judgementOfWisdom','sunderArmor','exposeArmor','faerieFire','giftOfArthas','flaskSupremePower','greaterArcaneElixir','shadowPowerElixir','greaterFirepowerElixir','wizardOil','magebloodElixir','nightfinSoup','arcaneIntellect','markOfTheWild','blessingOfKings','blessingOfWisdom','manaSpringTotem','dragonslayer','songflower','warchiefsBlessing','spiritOfZandalar','saygesFortune','curseOfShadow','curseOfElements','shadowWeaving','improvedScorch','nightfallProcDebuff'];
 const trees=['affliction','demonology','destruction'];
@@ -83,7 +84,53 @@ export function importBuild(payload) {
   const defs=TALENT_DEFINITIONS.filter(d=>d.tree===tree);
   check(part.length<=defs.length && [...part].every((v,i)=>Number(v)<=defs[i].max),'Talent string does not match the current talent tree');
  });
- check(!payload.player.equipment?.items?.some(i=>i?.id),'Equipped gear cannot be resolved yet. Import requires direct bonus stats');
+ // Equipped gear is resolved via local gear database
+ let equippedTrinketSP = 0, equippedTrinketDuration = 0, equippedTrinketCD = 0;
+ if (payload.player.equipment?.items?.some(i => i?.id)) {
+  for (const it of payload.player.equipment.items) {
+   if (!it || !it.id) continue;
+   const gear = gearDb.items[String(it.id)];
+   if (gear) {
+    if (!payload.player.bonusStats) payload.player.bonusStats = { stats: [], pseudoStats: [] };
+    if (!payload.player.bonusStats.stats) payload.player.bonusStats.stats = [];
+    const s = payload.player.bonusStats.stats;
+    if (gear.sta) s[2] = (s[2] || 0) + gear.sta;
+    if (gear.int) s[3] = (s[3] || 0) + gear.int;
+    if (gear.sp) s[5] = (s[5] || 0) + gear.sp;
+    if (gear.fp) s[7] = (s[7] || 0) + gear.fp;
+    if (gear.shp) s[11] = (s[11] || 0) + gear.shp;
+    if (gear.pen) s[12] = (s[12] || 0) + gear.pen;
+    if (gear.spi) s[13] = (s[13] || 0) + gear.spi;
+    if (gear.mp5) s[31] = (s[31] || 0) + gear.mp5;
+    if (gear.hit) s[17] = (s[17] || 0) + Math.round(gear.hit * 10);
+    if (gear.crit) s[18] = (s[18] || 0) + Math.round(gear.crit * 14);
+
+    if (gear.trinketSP && !equippedTrinketSP) {
+     equippedTrinketSP = gear.trinketSP;
+     equippedTrinketDuration = gear.trinketDuration;
+     equippedTrinketCD = gear.trinketCD;
+    }
+   }
+   if (it.enchant) {
+    const ench = gearDb.enchants[String(it.enchant)];
+    if (ench) {
+     if (!payload.player.bonusStats) payload.player.bonusStats = { stats: [], pseudoStats: [] };
+     if (!payload.player.bonusStats.stats) payload.player.bonusStats.stats = [];
+     const s = payload.player.bonusStats.stats;
+     if (ench.sta) s[2] = (s[2] || 0) + ench.sta;
+     if (ench.int) s[3] = (s[3] || 0) + ench.int;
+     if (ench.sp) s[5] = (s[5] || 0) + ench.sp;
+     if (ench.fp) s[7] = (s[7] || 0) + ench.fp;
+     if (ench.shp) s[11] = (s[11] || 0) + ench.shp;
+     if (ench.pen) s[12] = (s[12] || 0) + ench.pen;
+     if (ench.spi) s[13] = (s[13] || 0) + ench.spi;
+     if (ench.mp5) s[31] = (s[31] || 0) + ench.mp5;
+     if (ench.hit) s[17] = (s[17] || 0) + Math.round(ench.hit * 10);
+     if (ench.crit) s[18] = (s[18] || 0) + Math.round(ench.crit * 14);
+    }
+   }
+  }
+ }
  check(!payload.player.rotation?.prepullActions?.length,'Prepull actions are not supported');
  check(!payload.player.itemSwap && !payload.player.cooldowns?.cooldowns?.length,'Item swaps and custom cooldown schedules are not supported');
  const active=v=>Array.isArray(v)?v.some(active):v&&typeof v==='object'?Object.values(v).some(active):v!==null&&v!==undefined&&v!==false&&v!==0&&v!==''&&!['TristateEffectMissing','ProfessionUnknown'].includes(v);
@@ -111,6 +158,12 @@ export function importBuild(payload) {
  check(!payload.partyBuffs?.manaSpringTotem||['TristateEffectMissing','TristateEffectRegular','TristateEffectImproved',0,1,2].includes(payload.partyBuffs.manaSpringTotem),'Unsupported Mana Spring encoding');
  const build=structuredClone(payload);
  const c=convertForeverBuildToCandidate(build);
+ c.equipment = { mode: 'direct', items: {} };
+ if (equippedTrinketSP && !c.trinketSP) {
+  c.trinketSP = equippedTrinketSP;
+  c.trinketDuration = equippedTrinketDuration;
+  c.trinketCD = equippedTrinketCD;
+ }
  check(c.apl?.text,'No supported APL found');
  resolveCandidate(c);
  return c;

@@ -1,5 +1,6 @@
 #include "detailed_view.h"
 #include "imgui.h"
+#include "implot.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -51,43 +52,88 @@ void DetailedView::drawTimeline() {
         if (!std::isfinite(until_)) until_ = duration;
         from_ = std::clamp(from_, 0.0f, duration); until_ = std::clamp(until_, from_, duration); filter();
     }
-    const ImVec2 origin = ImGui::GetCursorScreenPos(); const float width = std::max(160.0f, ImGui::GetContentRegionAvail().x);
-    const float left = origin.x + 60, plotWidth = width - 65;
-    ImGui::InvisibleButton("##event-timeline", ImVec2(width, 90));
-    auto* draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + 74), IM_COL32(25, 32, 44, 255), 4);
-    const char* actors[] = {"Player", "Pet", "System"};
-    for (int lane = 0; lane < 3; ++lane) {
-        const float y = origin.y + 10 + lane * 22;
-        draw->AddText(ImVec2(origin.x + 5, y), IM_COL32(160, 170, 190, 255), actors[lane]);
-        draw->AddLine(ImVec2(left, y + 7), ImVec2(left + plotWidth, y + 7), IM_COL32(55, 65, 80, 255));
-    }
-    const auto& events = timeline["events"]; const float span = std::max(.001f, until_ - from_);
-    const auto mouse = ImGui::GetMousePos(); const Json* hovered = nullptr; float nearest = 5;
+    const auto& events = timeline["events"];
+    std::vector<double> playerX, playerY, petX, petY, sysX, sysY;
+    std::vector<size_t> playerIdx, petIdx, sysIdx;
     for (const size_t index : visible_) {
         const auto& event = events[index]; const std::string actor = event["actor"];
-        const int lane = actor == "Pet" ? 1 : actor == "System" ? 2 : 0;
-        const float x = left + (event["time"].get<float>() - from_) / span * plotWidth;
-        const float y = origin.y + 10 + lane * 22;
-        const bool damage = event["damage"].get<float>() > 0;
-        const ImU32 color = damage ? IM_COL32(240, 168, 85, 255) : event["kind"] == 102 ? IM_COL32(105, 205, 150, 255) : IM_COL32(115, 170, 235, 255);
-        draw->AddRectFilled(ImVec2(x, y), ImVec2(x + 2, y + 15), color);
-        if (ImGui::IsItemHovered() && std::abs(mouse.y - (y + 7)) < 11 && std::abs(mouse.x - x) < nearest) { hovered = &event; nearest = std::abs(mouse.x - x); }
+        const double t = event["time"].get<double>();
+        if (actor == "Player") { playerX.push_back(t); playerY.push_back(0.0); playerIdx.push_back(index); }
+        else if (actor == "Pet") { petX.push_back(t); petY.push_back(1.0); petIdx.push_back(index); }
+        else { sysX.push_back(t); sysY.push_back(2.0); sysIdx.push_back(index); }
     }
+    const double yTicks[] = {0.0, 1.0, 2.0};
+    const char* yLabels[] = {"Player", "Pet", "System"};
+    const Json* hovered = nullptr;
+    ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(10, 8));
+    if (ImPlot::BeginPlot("##event_timeline_plot", ImVec2(-1, 130), ImPlotFlags_NoTitle | ImPlotFlags_NoBoxSelect)) {
+        ImPlot::SetupAxes("Time (s)", nullptr, ImPlotAxisFlags_None, ImPlotAxisFlags_None);
+        ImPlot::SetupAxisLimits(ImAxis_X1, from_, until_, ImPlotCond_Always);
+        ImPlot::SetupAxisLimits(ImAxis_Y1, -0.6, 2.6, ImPlotCond_Always);
+        ImPlot::SetupAxisTicks(ImAxis_Y1, yTicks, 3, yLabels);
+
+        ImPlotSpec specPlayer;
+        specPlayer.Marker = ImPlotMarker_Square;
+        specPlayer.MarkerSize = 4.0f;
+        specPlayer.FillColor = ImVec4(0.94f, 0.66f, 0.33f, 0.90f);
+        specPlayer.LineColor = ImVec4(1.0f, 0.80f, 0.45f, 1.0f);
+        ImPlot::PlotScatter("Player##lane", playerX.data(), playerY.data(), static_cast<int>(playerX.size()), specPlayer);
+
+        ImPlotSpec specPet;
+        specPet.Marker = ImPlotMarker_Circle;
+        specPet.MarkerSize = 4.0f;
+        specPet.FillColor = ImVec4(0.41f, 0.80f, 0.59f, 0.90f);
+        specPet.LineColor = ImVec4(0.60f, 0.95f, 0.75f, 1.0f);
+        ImPlot::PlotScatter("Pet##lane", petX.data(), petY.data(), static_cast<int>(petX.size()), specPet);
+
+        ImPlotSpec specSys;
+        specSys.Marker = ImPlotMarker_Diamond;
+        specSys.MarkerSize = 4.0f;
+        specSys.FillColor = ImVec4(0.45f, 0.67f, 0.92f, 0.90f);
+        specSys.LineColor = ImVec4(0.65f, 0.82f, 1.0f, 1.0f);
+        ImPlot::PlotScatter("System##lane", sysX.data(), sysY.data(), static_cast<int>(sysX.size()), specSys);
+
+        if (ImPlot::IsPlotHovered()) {
+            const ImPlotPoint mouse = ImPlot::GetPlotMousePos();
+            const double thresholdX = std::max(0.1, (until_ - from_) * 0.015);
+            double nearestDist = thresholdX;
+            auto checkLane = [&](const std::vector<double>& xs, double targetY, const std::vector<size_t>& indices) {
+                if (std::abs(mouse.y - targetY) < 0.45) {
+                    for (size_t i = 0; i < xs.size(); ++i) {
+                        const double dist = std::abs(mouse.x - xs[i]);
+                        if (dist < nearestDist) {
+                            nearestDist = dist;
+                            hovered = &events[indices[i]];
+                        }
+                    }
+                }
+            };
+            checkLane(playerX, 0.0, playerIdx);
+            checkLane(petX, 1.0, petIdx);
+            checkLane(sysX, 2.0, sysIdx);
+        }
+        ImPlot::EndPlot();
+    }
+    ImPlot::PopStyleVar();
     if (hovered) ImGui::SetTooltip("%.3fs / %s / %s\nDamage %.1f / Mana %.0f", (*hovered)["time"].get<double>(), (*hovered)["event"].get_ref<const std::string&>().c_str(), (*hovered)["spell"].get_ref<const std::string&>().c_str(), (*hovered)["damage"].get<double>(), (*hovered)["mana"].get<double>());
-    char label[64]; std::snprintf(label, sizeof(label), "%.2fs", from_); draw->AddText(ImVec2(left, origin.y + 76), IM_COL32(160, 170, 190, 255), label);
-    std::snprintf(label, sizeof(label), "%.2fs", until_); draw->AddText(ImVec2(left + plotWidth - ImGui::CalcTextSize(label).x, origin.y + 76), IM_COL32(160, 170, 190, 255), label);
     ImGui::TextDisabled("%zu matching events", visible_.size());
-    if (ImGui::BeginTable("events", 8, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable, ImVec2(0, 340))) {
+    if (ImGui::BeginTable("events", 8, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerH, ImVec2(0, 340))) {
         for (const char* label : {"Time", "Actor", "Event", "Spell", "Damage", "Mana", "Pet mana", "Outcome"}) ImGui::TableSetupColumn(label);
         ImGui::TableSetupScrollFreeze(0, 1); ImGui::TableHeadersRow();
         ImGuiListClipper clipper; clipper.Begin(static_cast<int>(visible_.size()));
         while (clipper.Step()) for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
             const auto& event = events[visible_[i]];
-            ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::Text("%.3f", event["time"].get<double>());
+            ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextDisabled("%.3f", event["time"].get<double>());
             for (const char* key : {"actor", "event", "spell"}) { ImGui::TableNextColumn(); ImGui::TextUnformatted(event[key].get_ref<const std::string&>().c_str()); }
-            for (const char* key : {"damage", "mana", "petMana"}) { ImGui::TableNextColumn(); ImGui::Text("%.1f", event[key].get<double>()); }
-            ImGui::TableNextColumn(); const unsigned flags = event["flags"]; ImGui::TextUnformatted(flags & 2 ? "Miss" : flags & 1 ? "Crit" : "");
+            ImGui::TableNextColumn();
+            const double dmg = event["damage"].get<double>();
+            if (dmg > 0) ImGui::TextColored(ImVec4(0.98f, 0.76f, 0.40f, 1.0f), "%.1f", dmg);
+            else ImGui::TextDisabled("-");
+            for (const char* key : {"mana", "petMana"}) { ImGui::TableNextColumn(); ImGui::Text("%.1f", event[key].get<double>()); }
+            ImGui::TableNextColumn();
+            const unsigned flags = event["flags"];
+            if (flags & 2) ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f), "MISS");
+            else if (flags & 1) ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.35f, 1.0f), "CRIT");
         }
         ImGui::EndTable();
     }
