@@ -43,11 +43,11 @@ Editor::Editor(const fs::path& root, const std::string& initialCandidate) : root
     std::ifstream saved(root_ / "artifacts/editor/draft.json");
     if (!initialCandidate.empty()) { load(Json::parse(initialCandidate)); preset_ = -1; }
     else if (saved) { try { load(Json::parse(saved)); preset_ = -1; message_ = "Draft restored"; } catch (const std::exception& e) { message_ = e.what(); } }
-    // Upload all local spell textures once before any job starts.
-    for (const auto& action : catalog_.at("actions")) {
-        const auto icon = action.at("icon").get<std::string>(); if (icons_.count(icon)) continue;
+    // Upload all local spell and option textures once before any job starts.
+    auto loadTexture = [&](const std::string& icon) {
+        if (icon.empty() || icons_.count(icon)) return;
         png_image image{}; image.version = PNG_IMAGE_VERSION;
-        if (!png_image_begin_read_from_file(&image, (root_ / "assets/icons" / icon).c_str())) continue;
+        if (!png_image_begin_read_from_file(&image, (root_ / "assets/icons" / icon).c_str())) return;
         image.format = PNG_FORMAT_RGBA; std::vector<unsigned char> pixels(PNG_IMAGE_SIZE(image));
         if (png_image_finish_read(&image, nullptr, pixels.data(), 0, nullptr)) {
             GLuint texture; glGenTextures(1, &texture); glBindTexture(GL_TEXTURE_2D, texture);
@@ -55,6 +55,19 @@ Editor::Editor(const fs::path& root, const std::string& initialCandidate) : root
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data()); icons_[icon] = texture;
         }
         png_image_free(&image);
+    };
+
+    for (const auto& action : catalog_.at("actions")) {
+        loadTexture(action.at("icon").get<std::string>());
+    }
+    // Also load option icons
+    const std::vector<std::string> extraIcons = {
+        "race_human.png", "race_gnome.png", "race_orc.png", "race_troll.png", "race_undead.png",
+        "Spell_Shadow_SummonImp.png", "Spell_Shadow_SummonSuccubus.png", "icon_none.png",
+        "Spell_Shadow_ShadowBolt.png", "Spell_Fire_Fireball.png", "Spell_Fire_Immolation.png"
+    };
+    for (const auto& icon : extraIcons) {
+        loadTexture(icon);
     }
 }
 Editor::~Editor() { for (const auto& entry : icons_) glDeleteTextures(1, &entry.second); }
@@ -178,14 +191,10 @@ void Editor::submit(JobRequest& request) { save(); prepareCandidate(request, can
 void Editor::draw(bool disabled) {
     ImGui::BeginDisabled(disabled);
 
-    // Top Header Bar: Preset selection on the left, WoWSims drag & drop import box on the right
-    const float headerAvailWidth = ImGui::GetContentRegionAvail().x;
-    const float dropBoxWidth = std::clamp(headerAvailWidth * 0.48f, 320.0f, 540.0f);
-    const float presetWidth = std::max(180.0f, headerAvailWidth - dropBoxWidth - 24.0f);
-
-    ImGui::BeginGroup();
+    // Header: Preset selection & WoWSims drag & drop import box
+    const float availWidth = ImGui::GetContentRegionAvail().x;
     ImGui::TextDisabled("Configuration Preset");
-    ImGui::SetNextItemWidth(presetWidth);
+    ImGui::SetNextItemWidth(std::min(availWidth, 380.0f));
     if (ImGui::BeginCombo("##BuildPreset", preset_ < 0 ? "Custom Profile" : catalog_["presets"][preset_]["name"].get_ref<const std::string&>().c_str())) {
         for (size_t i = 0; i < catalog_["presets"].size(); ++i) {
             if (ImGui::Selectable(catalog_["presets"][i]["name"].get_ref<const std::string&>().c_str(), preset_ == static_cast<int>(i))) {
@@ -205,17 +214,15 @@ void Editor::draw(bool disabled) {
         const std::string label = importedSourceTitle_.empty() ? "Profile Link" : importedSourceTitle_;
         ImGui::TextLinkOpenURL(label.c_str(), importedLink_.c_str());
     }
-    ImGui::EndGroup();
 
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (headerAvailWidth - (ImGui::GetCursorPosX() - ImGui::GetCursorStartPos().x) - dropBoxWidth));
+    ImGui::Spacing();
 
-    // Right-side Drop Box / Import Target
-    const float dropBoxHeight = 52.0f;
+    // Drop Box / Import Target
+    const float dropBoxHeight = 50.0f;
     const ImVec2 dropMin = ImGui::GetCursorScreenPos();
-    const ImVec2 dropMax = ImVec2(dropMin.x + dropBoxWidth, dropMin.y + dropBoxHeight);
+    const ImVec2 dropMax = ImVec2(dropMin.x + availWidth, dropMin.y + dropBoxHeight);
 
-    ImGui::InvisibleButton("##import_drop_zone", ImVec2(dropBoxWidth, dropBoxHeight));
+    ImGui::InvisibleButton("##import_drop_zone", ImVec2(availWidth, dropBoxHeight));
     const bool isDropHovered = ImGui::IsItemHovered();
     const bool isDropClicked = ImGui::IsItemClicked();
 
@@ -243,10 +250,10 @@ void Editor::draw(bool disabled) {
     const ImVec2 size1 = ImGui::CalcTextSize(dropText1);
     const ImVec2 size2 = ImGui::CalcTextSize(dropText2);
 
-    const float text1X = dropMin.x + (dropBoxWidth - size1.x) * 0.5f;
-    const float text1Y = dropMin.y + 8.0f;
-    const float text2X = dropMin.x + (dropBoxWidth - size2.x) * 0.5f;
-    const float text2Y = dropMin.y + 28.0f;
+    const float text1X = dropMin.x + (availWidth - size1.x) * 0.5f;
+    const float text1Y = dropMin.y + 7.0f;
+    const float text2X = dropMin.x + (availWidth - size2.x) * 0.5f;
+    const float text2Y = dropMin.y + 27.0f;
 
     fgDraw->AddText(ImVec2(text1X, text1Y), isDropHovered ? IM_COL32(230, 240, 255, 255) : IM_COL32(180, 195, 220, 255), dropText1);
     fgDraw->AddText(ImVec2(text2X, text2Y), IM_COL32(120, 135, 160, 220), dropText2);
@@ -255,92 +262,248 @@ void Editor::draw(bool disabled) {
     ImGui::Separator();
     ImGui::Spacing();
 
-    if (ImGui::BeginTable("setup", 2, ImGuiTableFlags_Resizable)) {
-        ImGui::TableSetupColumn("Character", ImGuiTableColumnFlags_WidthStretch, 0.40f);
-        ImGui::TableSetupColumn("APL", ImGuiTableColumnFlags_WidthStretch, 0.60f);
-        ImGui::TableNextColumn();
-        ImGui::PushFont(nullptr, 13.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(7, 4));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 5));
-        auto& options = candidate_["classOptions"];
-        auto combo = [&](const char* label, const char* key, const std::vector<std::string>& values) {
-            const std::string current = options.at(key);
-            if (ImGui::BeginCombo(label, current.c_str())) { for (const auto& v : values) if (ImGui::Selectable(v.c_str(), current == v)) { options[key] = v; dirty_ = true; } ImGui::EndCombo(); }
+    ImGui::PushFont(nullptr, 13.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(7, 4));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 5));
+    auto& options = candidate_["classOptions"];
+
+    // Helper for rendering an icon button with a popup selection menu (like in classic sim UI)
+    struct IconOption {
+        std::string value;
+        std::string tooltip;
+        std::string icon;
+    };
+    auto iconButtonSelect = [&](const char* id, const char* label, const char* key, const std::vector<IconOption>& items) {
+        const std::string current = options.at(key);
+        const IconOption* curItem = nullptr;
+        for (const auto& item : items) {
+            if (item.value == current) { curItem = &item; break; }
+        }
+        if (!curItem && !items.empty()) curItem = &items[0];
+
+        const float iconSize = 36.0f;
+        auto getTex = [&](const std::string& iconFile) -> ImTextureID {
+            auto it = icons_.find(iconFile);
+            return (it != icons_.end()) ? static_cast<ImTextureID>(it->second) : 0;
         };
-        ImGui::SeparatorText("Character & Encounter");
 
-        // Compact 4-column inline grid for character attributes & duration
-        if (ImGui::BeginTable("char_options_grid", 4, ImGuiTableFlags_None)) {
-            ImGui::TableSetupColumn("c1", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("c2", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("c3", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("c4", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::BeginGroup();
+        // Top label like "RACE", "PET", "DS"
+        ImGui::TextColored(ImVec4(0.45f, 0.65f, 0.90f, 1.0f), "%s", label);
 
-            ImGui::TableNextColumn();
-            ImGui::PushItemWidth(-1);
-            ImGui::TextDisabled("Race");
-            combo("##Race", "race", {"HUMAN", "GNOME", "ORC", "TROLL", "UNDEAD"});
-            ImGui::PopItemWidth();
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.08f, 0.10f, 0.14f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.25f, 0.35f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.30f, 0.38f, 0.50f, 1.0f));
 
-            ImGui::TableNextColumn();
-            ImGui::PushItemWidth(-1);
-            ImGui::TextDisabled("Active Pet");
-            combo("##Pet", "pet", {"none", "imp", "succubus"});
-            ImGui::PopItemWidth();
-
-            ImGui::TableNextColumn();
-            ImGui::PushItemWidth(-1);
-            ImGui::TextDisabled("Sacrifice");
-            combo("##Sacrifice", "sacrifice", {"none", "imp", "succubus"});
-            ImGui::PopItemWidth();
-
-            ImGui::TableNextColumn();
-            ImGui::PushItemWidth(-1);
-            ImGui::TextDisabled("Fallback");
-            combo("##Fallback", "rotation", {"shadow", "fire", "searing"});
-            ImGui::PopItemWidth();
-
-            ImGui::EndTable();
+        ImTextureID curTex = curItem ? getTex(curItem->icon) : 0;
+        std::string btnId = std::string("##btn_") + id;
+        if (ImGui::ImageButton(btnId.c_str(), curTex, ImVec2(iconSize, iconSize))) {
+            ImGui::OpenPopup(id);
         }
 
-        int duration = candidate_["encounter"]["duration"];
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextDisabled("Encounter Duration:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(110);
-        if (ImGui::InputInt("##EncounterDuration", &duration, 10, 60)) {
-            candidate_["encounter"]["duration"] = std::clamp(duration, 1, 1800);
-            dirty_ = true;
+        // Draw golden/bronze icon border like in WoW
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        ImVec2 pMin = ImGui::GetItemRectMin();
+        ImVec2 pMax = ImGui::GetItemRectMax();
+        draw->AddRect(pMin, pMax, IM_COL32(180, 150, 70, 220), 3.0f, 0, 1.5f);
+
+        if (ImGui::IsItemHovered() && curItem) {
+            ImGui::SetTooltip("%s: %s (click to change)", label, curItem->tooltip.c_str());
         }
-        ImGui::SameLine();
-        ImGui::TextDisabled("seconds (%dm %ds)", duration / 60, duration % 60);
-        ImGui::Spacing();
 
-        if (ImGui::CollapsingHeader("Talents", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::BeginTabBar("talentTrees")) {
-                const char* trees[] = {"affliction", "demonology", "destruction"};
-                const char* names[] = {"Affliction", "Demonology", "Destruction"};
-                for (int tree = 0; tree < 3; ++tree) if (ImGui::BeginTabItem(names[tree])) {
-                    int treePoints = 0;
-                    for (const auto& rank : candidate_["talents"][trees[tree]].items()) treePoints += rank.value().get<int>();
-                    int total = 0;
-                    for (const auto& entry : candidate_["talents"].items()) for (const auto& rank : entry.value().items()) total += rank.value().get<int>();
+        ImGui::PopStyleColor(3);
+        ImGui::PopStyleVar();
 
-                    ImGui::TextColored(ImVec4(0.70f, 0.75f, 0.85f, 1.0f), "%s: %d pts", names[tree], treePoints);
+        // Popup selection
+        if (ImGui::BeginPopup(id)) {
+            ImGui::TextDisabled("Select %s", label);
+            ImGui::Separator();
+            for (const auto& item : items) {
+                ImGui::PushID(item.value.c_str());
+                const bool isSelected = (current == item.value);
+                ImTextureID tex = getTex(item.icon);
+                if (ImGui::Selectable("##select_item", isSelected, ImGuiSelectableFlags_None, ImVec2(140, 26))) {
+                    options[key] = item.value;
+                    dirty_ = true;
+                }
+                ImGui::SameLine(6.0f);
+                if (tex) {
+                    ImGui::Image(tex, ImVec2(22, 22));
                     ImGui::SameLine();
-                    ImGui::TextDisabled("| Total: %d / 51", total);
-                    ImGui::ProgressBar(std::min(1.0f, static_cast<float>(total) / 51.0f), ImVec2(-1, 4), "");
+                }
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(item.tooltip.c_str());
+                ImGui::PopID();
+            }
+            ImGui::EndPopup();
+        }
+        ImGui::EndGroup();
+    };
 
-                    ImGui::BeginChild("talents", ImVec2(0, 235), ImGuiChildFlags_None);
-                    if (ImGui::BeginTable("ranks", 2, ImGuiTableFlags_RowBg)) {
-                        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
-                        ImGui::TableSetupColumn("Rank", ImGuiTableColumnFlags_WidthFixed, 108);
-                        for (const auto& talent : catalog_["talents"]) if (talent["tree"] == tree) {
-                            const std::string id = talent["id"]; const int maximum = talent["max"];
-                            int rank = candidate_["talents"][trees[tree]].value(id, 0);
+    ImGui::SeparatorText("Character & Encounter");
+
+    // Clean horizontal group of square icon selectors with a neat border card
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.09f, 0.12f, 0.50f));
+    ImGui::BeginChild("char_card", ImVec2(0, 72), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar);
+    ImGui::SetCursorPos(ImVec2(12, 8));
+
+    // Race
+    const std::vector<IconOption> raceOptions = {
+        {"HUMAN", "Human", "race_human.png"},
+        {"GNOME", "Gnome", "race_gnome.png"},
+        {"ORC", "Orc", "race_orc.png"},
+        {"TROLL", "Troll", "race_troll.png"},
+        {"UNDEAD", "Undead", "race_undead.png"}
+    };
+    iconButtonSelect("popup_race", "RACE", "race", raceOptions);
+
+    ImGui::SameLine(0, 16);
+    // Pet
+    const std::vector<IconOption> petOptions = {
+        {"none", "None", "icon_none.png"},
+        {"imp", "Imp", "Spell_Shadow_SummonImp.png"},
+        {"succubus", "Succubus", "Spell_Shadow_SummonSuccubus.png"}
+    };
+    iconButtonSelect("popup_pet", "PET", "pet", petOptions);
+
+    ImGui::SameLine(0, 16);
+    // Sacrifice (DS)
+    const std::vector<IconOption> sacrificeOptions = {
+        {"none", "None", "icon_none.png"},
+        {"imp", "Imp", "Spell_Shadow_SummonImp.png"},
+        {"succubus", "Succubus", "Spell_Shadow_SummonSuccubus.png"}
+    };
+    iconButtonSelect("popup_ds", "DS", "sacrifice", sacrificeOptions);
+
+    ImGui::SameLine(0, 20);
+    // Vertical divider
+    ImDrawList* cardDraw = ImGui::GetWindowDrawList();
+    float divX = ImGui::GetCursorScreenPos().x + 2.0f;
+    float divYMin = ImGui::GetCursorScreenPos().y + 4.0f;
+    float divYMax = divYMin + 44.0f;
+    cardDraw->AddLine(ImVec2(divX, divYMin), ImVec2(divX, divYMax), IM_COL32(70, 75, 95, 120), 1.0f);
+    ImGui::Dummy(ImVec2(8, 0));
+    ImGui::SameLine(0, 14);
+
+    // Encounter duration inline inside the card
+    ImGui::BeginGroup();
+    ImGui::TextColored(ImVec4(0.45f, 0.65f, 0.90f, 1.0f), "DURATION");
+    int duration = candidate_["encounter"]["duration"];
+    ImGui::SetNextItemWidth(90);
+    if (ImGui::InputInt("##EncounterDuration", &duration, 10, 60)) {
+        candidate_["encounter"]["duration"] = std::clamp(duration, 1, 1800);
+        dirty_ = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("s (%dm %ds)", duration / 60, duration % 60);
+    ImGui::EndGroup();
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+
+    if (ImGui::CollapsingHeader("Talents", ImGuiTreeNodeFlags_DefaultOpen)) {
+        const char* treeKeys[] = {"affliction", "demonology", "destruction"};
+        const char* treeNames[] = {"Affliction", "Demonology", "Destruction"};
+
+        int treePoints[3] = {0, 0, 0};
+        for (int t = 0; t < 3; ++t) {
+            for (const auto& rank : candidate_["talents"][treeKeys[t]].items()) {
+                treePoints[t] += rank.value().get<int>();
+            }
+        }
+        int totalPoints = treePoints[0] + treePoints[1] + treePoints[2];
+
+        // Overall talent header bar showing points in all 3 trees and total out of 51
+        ImGui::TextColored(ImVec4(0.70f, 0.75f, 0.85f, 1.0f), "Aff: %d | Demo: %d | Dest: %d", treePoints[0], treePoints[1], treePoints[2]);
+        ImGui::SameLine();
+        ImGui::TextDisabled("| Total: %d / 51", totalPoints);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(Left click adds, right click removes)");
+        ImGui::ProgressBar(std::min(1.0f, static_cast<float>(totalPoints) / 51.0f), ImVec2(-1, 4), "");
+
+        // Pre-organize talents by [tree][row]
+        std::vector<nlohmann::json> grid[3][8];
+        for (const auto& talent : catalog_["talents"]) {
+            int t = talent["tree"].get<int>();
+            int r = talent["row"].get<int>();
+            if (t >= 0 && t < 3 && r >= 1 && r <= 7) {
+                grid[t][r].push_back(talent);
+            }
+        }
+
+        // Talent table with 3 equal columns, showing Affliction, Demonology, Destruction simultaneously
+        if (ImGui::BeginTable("talents_three_trees", 3, ImGuiTableFlags_None)) {
+            ImGui::TableSetupColumn("Affliction", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Demonology", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Destruction", ImGuiTableColumnFlags_WidthStretch);
+
+            // Tree header row with tree names and point counts
+            ImGui::TableNextRow();
+            for (int t = 0; t < 3; ++t) {
+                ImGui::TableNextColumn();
+                ImGui::TextColored(ImVec4(0.55f, 0.78f, 1.0f, 1.0f), "%s (%d pts)", treeNames[t], treePoints[t]);
+            }
+
+            // Loop through tiers 1 to 7
+            for (int r = 1; r <= 7; ++r) {
+                // Tier separator line across all 3 columns
+                ImGui::TableNextRow();
+                for (int t = 0; t < 3; ++t) {
+                    ImGui::TableNextColumn();
+                    ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.35f, 0.40f, 0.52f, 0.80f));
+                    ImGui::Separator();
+                    ImGui::PopStyleColor();
+                }
+
+                // Determine max number of talents in this tier across the 3 trees
+                int maxInTier = std::max({(int)grid[0][r].size(), (int)grid[1][r].size(), (int)grid[2][r].size()});
+
+                // Render slots within this tier
+                for (int slot = 0; slot < maxInTier; ++slot) {
+                    ImGui::TableNextRow();
+                    for (int t = 0; t < 3; ++t) {
+                        ImGui::TableNextColumn();
+                        if (slot < (int)grid[t][r].size()) {
+                            const auto& talent = grid[t][r][slot];
+                            const std::string id = talent["id"];
+                            const int maximum = talent["max"];
+                            const int requiredPoints = (r - 1) * 5;
+                            const bool tierUnlocked = (treePoints[t] >= requiredPoints);
+                            int rank = candidate_["talents"][treeKeys[t]].value(id, 0);
+
                             ImGui::PushID(id.c_str());
-                            ImGui::TableNextColumn();
                             ImGui::AlignTextToFramePadding();
+
+                            // Clickable talent item: Left click adds, Right click removes
+                            ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.20f, 0.25f, 0.35f, 0.50f));
+                            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.28f, 0.35f, 0.48f, 0.70f));
+                            ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.35f, 0.45f, 0.60f, 0.90f));
+
+                            char itemLabel[128];
+                            std::snprintf(itemLabel, sizeof(itemLabel), "##talent_%s", id.c_str());
+                            const bool canAdd = (rank < maximum && totalPoints < 51 && tierUnlocked);
+                            const bool canRemove = (rank > 0 && tierUnlocked);
+
+                            ImVec2 itemSize(0, ImGui::GetTextLineHeightWithSpacing());
+                            bool clickedLeft = false;
+                            if (ImGui::Selectable(itemLabel, rank > 0, ImGuiSelectableFlags_AllowOverlap, itemSize)) {
+                                clickedLeft = true;
+                            }
+                            const bool isHovered = ImGui::IsItemHovered();
+                            const bool clickedRight = isHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+
+                            if (clickedLeft && canAdd) {
+                                ++rank;
+                                dirty_ = true;
+                            } else if (clickedRight && canRemove) {
+                                --rank;
+                                dirty_ = true;
+                            }
+
+                            // Render text and rank over the selectable
+                            ImGui::SameLine(6.0f);
                             if (rank == maximum) {
                                 ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.40f, 1.0f), "%s", talent["name"].get_ref<const std::string&>().c_str());
                             } else if (rank > 0) {
@@ -348,99 +511,122 @@ void Editor::draw(bool disabled) {
                             } else {
                                 ImGui::TextDisabled("%s", talent["name"].get_ref<const std::string&>().c_str());
                             }
-                            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Tier %d / requires %d points in earlier tiers", talent["row"].get<int>(), (talent["row"].get<int>() - 1) * 5);
-                            ImGui::TableNextColumn();
-                            ImGui::BeginDisabled(rank == 0); if (ImGui::SmallButton("-")) { --rank; dirty_ = true; } ImGui::EndDisabled();
+
                             ImGui::SameLine();
                             if (rank == maximum) ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.40f, 1.0f), "%d/%d", rank, maximum);
                             else if (rank > 0) ImGui::TextColored(ImVec4(0.70f, 0.85f, 1.0f, 1.0f), "%d/%d", rank, maximum);
                             else ImGui::TextDisabled("%d/%d", rank, maximum);
-                            ImGui::SameLine();
-                            ImGui::BeginDisabled(rank == maximum || total >= 51); if (ImGui::SmallButton("+")) { ++rank; dirty_ = true; } ImGui::EndDisabled();
-                            candidate_["talents"][trees[tree]][id] = rank;
+
+                            if (isHovered) {
+                                ImGui::SetTooltip("%s (Rank %d/%d)\nRequires %d pts in %s\nLeft-click to add rank\nRight-click to remove rank",
+                                    talent["name"].get_ref<const std::string&>().c_str(), rank, maximum, requiredPoints, treeNames[t]);
+                            }
+
+                            ImGui::PopStyleColor(3);
+
+                            candidate_["talents"][treeKeys[t]][id] = rank;
                             ImGui::PopID();
                         }
-                        ImGui::EndTable();
                     }
-                    ImGui::EndChild();
-                    ImGui::EndTabItem();
                 }
-                ImGui::EndTabBar();
             }
+            ImGui::EndTable();
         }
-        if (ImGui::CollapsingHeader("Stats & buffs")) {
-            auto label = [](const std::string& key) {
-                std::string text; for (unsigned char c : key) { if (std::isupper(c)) text += ' '; text += c; }
-                if (!text.empty()) text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0]))); return text;
-            };
+    }
+    if (ImGui::CollapsingHeader("Stats & buffs")) {
+        auto label = [](const std::string& key) {
+            std::string text; for (unsigned char c : key) { if (std::isupper(c)) text += ' '; text += c; }
+            if (!text.empty()) text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0]))); return text;
+        };
 
-            // Toggle between Bare Stats and Equipped Gear
-            ImGui::TextDisabled("Stat Input Mode");
-            ImGui::RadioButton("Bare / Direct Stats", &statMode_, 0);
-            ImGui::SameLine();
-            ImGui::RadioButton("Equipped Gear", &statMode_, 1);
-            ImGui::Spacing();
+        // Toggle between Bare Stats and Equipped Gear
+        ImGui::TextDisabled("Stat Input Mode");
+        ImGui::RadioButton("Bare / Direct Stats", &statMode_, 0);
+        ImGui::SameLine();
+        ImGui::RadioButton("Equipped Gear", &statMode_, 1);
+        ImGui::Spacing();
 
-            if (statMode_ == 0) {
-                ImGui::TextDisabled("Direct Character Bonus Stats");
-                if (ImGui::BeginTable("bonus_stats_grid", 2, ImGuiTableFlags_None)) {
-                    ImGui::TableSetupColumn("s1", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn("s2", ImGuiTableColumnFlags_WidthStretch);
-                    const char* keys[] = {"spellPower", "shadowPower", "firePower", "intellect", "stamina", "spirit", "hit", "crit", "mp5", "penetration"};
-                    for (int i = 0; i < 10; ++i) {
-                        ImGui::TableNextColumn();
-                        float value = candidate_["stats"].value(keys[i], 0.0f);
-                        ImGui::PushItemWidth(100);
-                        if (ImGui::InputFloat(label(keys[i]).c_str(), &value)) {
-                            candidate_["stats"][keys[i]] = value;
-                            dirty_ = true;
-                        }
-                        ImGui::PopItemWidth();
-                    }
-                    ImGui::EndTable();
-                }
-            } else {
-                ImGui::TextDisabled("Equipped Gear & Item Stats");
-                ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.10f, 0.13f, 0.60f));
-                ImGui::BeginChild("gear_preview_box", ImVec2(0, 140), ImGuiChildFlags_Borders);
-                ImGui::TextColored(ImVec4(0.50f, 0.85f, 0.65f, 1.0f), "Item & Equipment Resolution");
-                ImGui::TextWrapped("Gear items are resolved via the WoW classic database (5,900+ items).");
-                ImGui::TextDisabled("Current gear mode: %s", candidate_.value("equipment", Json::object()).value("mode", "direct").c_str());
-                if (candidate_.contains("equipment") && candidate_["equipment"].contains("items") && !candidate_["equipment"]["items"].empty()) {
-                    ImGui::Text("Equipped items: %zu registered slots", candidate_["equipment"]["items"].size());
-                } else {
-                    ImGui::TextDisabled("No individual gear items equipped in active candidate.");
-                }
-                ImGui::Spacing();
-                if (ImGui::Button("Sync Gear -> Bare Stats")) {
-                    dirty_ = true;
-                    validateLive();
-                }
-                ImGui::SameLine();
-                ImGui::TextDisabled("(Recalculates attributes from equipped gear database)");
-                ImGui::EndChild();
-                ImGui::PopStyleColor();
-            }
-            ImGui::Separator();
-            ImGui::TextDisabled("Raid & Consumable Buffs");
-            if (ImGui::BeginTable("buffs_grid", 2, ImGuiTableFlags_None)) {
-                ImGui::TableSetupColumn("b1", ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableSetupColumn("b2", ImGuiTableColumnFlags_WidthStretch);
-                for (const auto& entry : catalog_["buffKeys"]) {
+        if (statMode_ == 0) {
+            ImGui::TextDisabled("Direct Character Bonus Stats");
+            if (ImGui::BeginTable("bonus_stats_grid", 2, ImGuiTableFlags_None)) {
+                ImGui::TableSetupColumn("s1", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("s2", ImGuiTableColumnFlags_WidthStretch);
+                const char* keys[] = {"spellPower", "shadowPower", "firePower", "intellect", "stamina", "spirit", "hit", "crit", "mp5", "penetration"};
+                for (int i = 0; i < 10; ++i) {
                     ImGui::TableNextColumn();
-                    const std::string key = entry;
-                    bool value = candidate_["buffs"].value(key, false);
-                    if (ImGui::Checkbox(label(key).c_str(), &value)) {
-                        candidate_["buffs"][key] = value;
+                    float value = candidate_["stats"].value(keys[i], 0.0f);
+                    ImGui::PushItemWidth(100);
+                    if (ImGui::InputFloat(label(keys[i]).c_str(), &value)) {
+                        candidate_["stats"][keys[i]] = value;
                         dirty_ = true;
                     }
+                    ImGui::PopItemWidth();
                 }
                 ImGui::EndTable();
             }
+        } else {
+            ImGui::TextDisabled("Equipped Gear & Item Stats");
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.10f, 0.13f, 0.60f));
+            ImGui::BeginChild("gear_preview_box", ImVec2(0, 140), ImGuiChildFlags_Borders);
+            ImGui::TextColored(ImVec4(0.50f, 0.85f, 0.65f, 1.0f), "Item & Equipment Resolution");
+            ImGui::TextWrapped("Gear items are resolved via the WoW classic database (5,900+ items).");
+            ImGui::TextDisabled("Current gear mode: %s", candidate_.value("equipment", Json::object()).value("mode", "direct").c_str());
+            if (candidate_.contains("equipment") && candidate_["equipment"].contains("items") && !candidate_["equipment"]["items"].empty()) {
+                ImGui::Text("Equipped items: %zu registered slots", candidate_["equipment"]["items"].size());
+            } else {
+                ImGui::TextDisabled("No individual gear items equipped in active candidate.");
+            }
+            ImGui::Spacing();
+            if (ImGui::Button("Sync Gear -> Bare Stats")) {
+                dirty_ = true;
+                validateLive();
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(Recalculates attributes from equipped gear database)");
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
         }
-        ImGui::PopStyleVar(2);
-        ImGui::PopFont();
-        ImGui::TableNextColumn(); ImGui::SeparatorText("Action priority");
+        ImGui::Separator();
+        ImGui::TextDisabled("Raid & Consumable Buffs");
+        if (ImGui::BeginTable("buffs_grid", 2, ImGuiTableFlags_None)) {
+            ImGui::TableSetupColumn("b1", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("b2", ImGuiTableColumnFlags_WidthStretch);
+            for (const auto& entry : catalog_["buffKeys"]) {
+                ImGui::TableNextColumn();
+                const std::string key = entry;
+                bool value = candidate_["buffs"].value(key, false);
+                if (ImGui::Checkbox(label(key).c_str(), &value)) {
+                    candidate_["buffs"][key] = value;
+                    dirty_ = true;
+                }
+            }
+            ImGui::EndTable();
+        }
+    }
+    ImGui::PopStyleVar(2);
+    ImGui::PopFont();
+
+    ImGui::PushFont(nullptr, 13.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(7, 4));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 5));
+
+    if (ImGui::CollapsingHeader("Action Priority List (APL)", ImGuiTreeNodeFlags_DefaultOpen)) {
+        // Fallback rotation text selector inline above editor
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("Fallback filler rotation:");
+        ImGui::SameLine();
+        const std::string curRot = options.value("rotation", "shadow");
+        const char* rotLabels[] = {"Shadow Bolt (shadow)", "Fireball (fire)", "Searing Pain / Immolate (searing)"};
+        const char* rotValues[] = {"shadow", "fire", "searing"};
+        int rotIdx = 0;
+        for (int i = 0; i < 3; ++i) if (curRot == rotValues[i]) { rotIdx = i; break; }
+        ImGui::SetNextItemWidth(220);
+        if (ImGui::Combo("##FallbackRotation", &rotIdx, rotLabels, IM_ARRAYSIZE(rotLabels))) {
+            options["rotation"] = rotValues[rotIdx];
+            dirty_ = true;
+        }
+        ImGui::Spacing();
+
         ImGui::TextDisabled("One action + condition per line");
         const ImVec2 origin = ImGui::GetCursorScreenPos();
         const float editorHeight = 350;
@@ -586,6 +772,7 @@ void Editor::draw(bool disabled) {
             }
         }
         draw->PopClipRect();
+
         if (ImGui::Button("Validate & save")) { validateLive(); }
         ImGui::SameLine(); if (ImGui::Button("Copy build")) { try { save(); ImGui::SetClipboardText(candidate_.dump(2).c_str()); message_ = "Copied"; } catch (const std::exception& e) { message_ = e.what(); } }
         ImGui::SameLine();
@@ -596,15 +783,20 @@ void Editor::draw(bool disabled) {
         } else {
             ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "Valid");
         }
-        ImGui::EndTable();
+
+        if (!message_.empty() && message_ != "Valid" && validationError_.empty()) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.55f, 0.80f, 1.0f, 1.0f), "| %s", message_.c_str());
+        }
+
+        if (!validationError_.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.45f, 0.45f, 1.0f));
+            ImGui::TextWrapped("%s", validationError_.c_str());
+            ImGui::PopStyleColor();
+        }
     }
-    if (!validationError_.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.45f, 0.45f, 1.0f));
-        ImGui::TextWrapped("%s", validationError_.c_str());
-        ImGui::PopStyleColor();
-    } else if (!message_.empty() && message_ != "Valid") {
-        ImGui::TextWrapped("%s", message_.c_str());
-    }
+    ImGui::PopStyleVar(2);
+    ImGui::PopFont();
     ImGui::EndDisabled();
 }
 }

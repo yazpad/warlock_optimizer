@@ -99,7 +99,8 @@ void NativeJob::publishLine(const std::string& line) {
     unsigned completed = 0, total = 0;
     if (std::sscanf(line.c_str(), "Read back %u/%u fights", &completed, &total) == 2 && total == state_.totalFights && completed <= total) {
         state_.completedFights = completed; state_.phase = "Native GPU execution / C aggregation";
-    } else if (line.find("Detailed analysis:") != std::string::npos) state_.phase = "Detailed trace and analysis";
+    } else if (line.find("Regret analysis:") != std::string::npos) state_.phase = line;
+    else if (line.find("Detailed analysis:") != std::string::npos) state_.phase = "Detailed trace and analysis";
     else if (line.find("Warmup complete:") != std::string::npos) state_.phase = "Measured native dispatches";
     else if (line.find("Pipeline ready") != std::string::npos) state_.phase = "Native pipeline ready / discarded warmups";
 }
@@ -116,7 +117,14 @@ void NativeJob::start(const JobRequest& input) {
     }
     const size_t candidates = suite.at("scenarios").size();
     require(candidates && request.totalFights % candidates == 0 && request.totalFights / candidates >= 2 && request.totalFights / candidates <= 1048576 && request.totalFights <= 16777216, "Invalid fight count for selected candidates");
-    require(request.mode == "fast" || request.mode == "detailed", "Invalid simulation mode");
+    require(request.mode == "fast" || request.mode == "detailed" || request.mode == "regret", "Invalid simulation mode");
+    if (request.mode == "regret") {
+        require(request.runs == 1 && !request.rawReports, "Regret analysis is a single diagnostic job without raw reports");
+        require(request.regretCandidate < candidates && request.regretDecisions >= 1 && request.regretDecisions <= 128 &&
+            request.regretRounds >= 1 && request.regretRounds <= 256 && request.regretSamples >= 2 && request.regretSamples <= 256 &&
+            request.regretValidation >= 2 && request.regretValidation <= 4096 && request.regretDepth >= 1 && request.regretDepth <= 4,
+            "Invalid regret search budget");
+    }
     require(request.batchSize >= 1 && request.batchSize <= 65536 && request.warmupBatches <= 32 && request.runs >= 1 && request.runs <= 10, "Invalid batch/warmup/run settings");
     require(!request.wave32 || request.specialized, "Current native CLI requires specialization for wave32");
     require(request.presentation == "headless" || request.presentation == "rendering-paused" || request.presentation == "visible-10hz", "Invalid presentation label");
@@ -131,7 +139,7 @@ void NativeJob::start(const JobRequest& input) {
 }
 void NativeJob::execute(JobRequest request) {
     Json summary = {{"schemaVersion", 1}, {"status", "running"}, {"frontend", "Dear ImGui native process client"},
-        {"computeBackend", "unchanged tools/run_native.lua + tools/vulkan_probe.c"},
+        {"computeBackend", request.mode == "regret" ? "Separate GPU regret diagnostic adapter" : "unchanged tools/run_native.lua + tools/vulkan_probe.c"},
         {"presentation", request.presentation}, {"mode", request.mode}, {"totalFights", request.totalFights}, {"batchSize", request.batchSize},
         {"warmupBatches", request.warmupBatches}, {"requestedRuns", request.runs}, {"rawReports", request.rawReports}, {"histogram", request.histogram}, {"runs", Json::array()},
         {"timingScope", "GPU/native/steady metrics come from native engine. Client wall includes process startup and JSON loading. UI rendering mode is labeled separately; rendering performance is not inferred from headless results."},
@@ -156,7 +164,13 @@ void NativeJob::execute(JobRequest request) {
             activeRaw = request.outputDirectory / ("native-" + std::to_string(index + 1) + ".bin");
             if (request.mode == "detailed") activeDetails = request.outputDirectory / ("details-" + std::to_string(index + 1) + ".json");
             workDirectory = request.outputDirectory / ("work-" + std::to_string(index + 1));
-            std::vector<std::string> command = runner_;
+            std::vector<std::string> command = request.mode == "regret" ? std::vector<std::string>{"luajit", "tools/run_regret.lua"} : runner_;
+            if (request.mode == "regret") {
+                for (const auto& value : std::vector<std::string>{"--regret-candidate", std::to_string(request.regretCandidate),
+                    "--regret-decisions", std::to_string(request.regretDecisions), "--regret-rounds", std::to_string(request.regretRounds),
+                    "--regret-samples", std::to_string(request.regretSamples), "--regret-validation", std::to_string(request.regretValidation),
+                    "--regret-depth", std::to_string(request.regretDepth)}) command.push_back(value);
+            }
             for (const auto& value : std::vector<std::string>{"--total-fights", std::to_string(request.totalFights), "--batch-size", std::to_string(request.batchSize), "--warmup-batches", std::to_string(request.warmupBatches), "--output", activeOutput.string(), "--work-dir", workDirectory.string()}) command.push_back(value);
             if (request.mode == "detailed") { command.push_back("--mode"); command.push_back("detailed"); command.push_back("--details-output"); command.push_back(activeDetails.string()); }
             if (!request.suiteSource.empty()) { command.push_back("--suite"); command.push_back((request.outputDirectory / "suite.json").string()); }
@@ -214,6 +228,21 @@ void NativeJob::execute(JobRequest request) {
             require(!cancelRequested_.load(), "Cancelled");
             require(WIFEXITED(status) && WEXITSTATUS(status) == 0, "Native worker failed; inspect the captured log");
             Json result = readJson(activeOutput);
+            if (request.mode == "regret") {
+                require(result.at("schemaVersion") == 1 && result.at("status") == "complete" && result.at("mode") == "regret" &&
+                    result.at("reportReplay") == "bit-identical" && result.at("candidateId") == suite.at("scenarios")[request.regretCandidate].at("id") &&
+                    result.at("seed") == suite.at("seed") && result.at("fightIndex") == 0 && result.at("rows").is_array() &&
+                    result.at("rows").size() <= request.regretDecisions, "Invalid regret result identity");
+                if (!request.suiteSource.empty()) require(result.at("suiteHash") == request.suiteHash, "Regret suite snapshot mismatch");
+                for (const auto& row : result.at("rows")) {
+                    numeric(row, "time"); numeric(row, "dpsDelta"); numeric(row, "standardError");
+                    require(row.at("samples") == request.regretValidation, "Regret sample count mismatch");
+                }
+                summary["analysis"] = result;
+                summary["timingScope"] = "Separate regret diagnostic; no benchmark throughput is measured or accepted.";
+                activeOutput.clear(); fs::remove_all(workDirectory); workDirectory.clear();
+                break;
+            }
             Json timing = validateNativeResult(result, request, suite);
             if (request.rawReports) require(fs::file_size(activeRaw) == uint64_t(request.totalFights) * (request.mode == "detailed" ? 163 : 16) * 4, "Native raw report size mismatch");
             if (request.mode == "detailed") {
@@ -239,11 +268,13 @@ void NativeJob::execute(JobRequest request) {
             { std::lock_guard<std::mutex> lock(mutex_); state_.completedFights = request.totalFights; state_.summary = summary; }
         }
         require(!cancelRequested_.load(), "Cancelled");
-        summary["medians"] = Json::object();
-        for (const char* metric : {"gpuComputeMs", "nativeWallMs", "executeReadbackMs", "cDecodeMs", "gpuSimsPerSecond", "nativeSimsPerSecond", "steadySimsPerSecond", "clientWallMs"}) {
-            std::vector<double> values; for (const auto& run : summary["runs"]) values.push_back(run["timing"][metric].get<double>());
-            std::sort(values.begin(), values.end()); const size_t n = values.size();
-            summary["medians"][metric] = (values[(n - 1) / 2] + values[n / 2]) / 2;
+        if (request.mode != "regret") {
+            summary["medians"] = Json::object();
+            for (const char* metric : {"gpuComputeMs", "nativeWallMs", "executeReadbackMs", "cDecodeMs", "gpuSimsPerSecond", "nativeSimsPerSecond", "steadySimsPerSecond", "clientWallMs"}) {
+                std::vector<double> values; for (const auto& run : summary["runs"]) values.push_back(run["timing"][metric].get<double>());
+                std::sort(values.begin(), values.end()); const size_t n = values.size();
+                summary["medians"][metric] = (values[(n - 1) / 2] + values[n / 2]) / 2;
+            }
         }
         summary["status"] = "complete";
     } catch (const std::exception& error) {

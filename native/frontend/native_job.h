@@ -22,6 +22,12 @@ struct JobRequest {
     bool allowSoftware = false;
     bool rawReports = false;
     bool histogram = false;
+    uint32_t regretCandidate = 0;
+    uint32_t regretDecisions = 128;
+    uint32_t regretRounds = 32;
+    uint32_t regretSamples = 16;
+    uint32_t regretValidation = 1000;
+    uint32_t regretDepth = 1;
     std::string mode = "fast";
     std::string presentation = "headless";
     std::string suiteSource; // Empty selects the unchanged frozen benchmark.
