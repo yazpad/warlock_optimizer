@@ -36,6 +36,11 @@ double numeric(const Json& object, const char* key, bool positive = false) {
     require(std::isfinite(value) && (positive ? value > 0 : value >= 0), std::string("Invalid result: ") + key);
     return value;
 }
+double diagnosticDelta(const Json& object, const char* key) {
+    require(object.contains(key) && object[key].is_number() && std::isfinite(object[key].get<double>()),
+        std::string("Invalid diagnostic delta: ") + key);
+    return object[key].get<double>();
+}
 double milliseconds(std::chrono::steady_clock::time_point start) {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 }
@@ -96,10 +101,18 @@ void NativeJob::publishLine(const std::string& line) {
     std::lock_guard<std::mutex> lock(mutex_);
     state_.log += line + '\n';
     if (state_.log.size() > 32768) state_.log.erase(0, state_.log.size() - 32768);
+    if (line.rfind("Neuro training: ", 0) == 0) {
+        auto point = nlohmann::json::parse(line.substr(16), nullptr, false);
+        if (!point.is_discarded() && point.is_object() && point.contains("generation") && point.contains("baselineDps") && point.contains("policyDps")) {
+            state_.trainingCurve.push_back(point);
+            state_.phase = "Neuroevolution / generation " + point.at("generation").dump();
+        }
+    }
     unsigned completed = 0, total = 0;
     if (std::sscanf(line.c_str(), "Read back %u/%u fights", &completed, &total) == 2 && total == state_.totalFights && completed <= total) {
         state_.completedFights = completed; state_.phase = "Native GPU execution / C aggregation";
-    } else if (line.find("Regret analysis:") != std::string::npos) state_.phase = line;
+    } else if (line.find("Policy evaluation:") != std::string::npos) state_.phase = line;
+    else if (line.find("Regret analysis:") != std::string::npos) state_.phase = line;
     else if (line.find("Detailed analysis:") != std::string::npos) state_.phase = "Detailed trace and analysis";
     else if (line.find("Warmup complete:") != std::string::npos) state_.phase = "Measured native dispatches";
     else if (line.find("Pipeline ready") != std::string::npos) state_.phase = "Native pipeline ready / discarded warmups";
@@ -116,10 +129,20 @@ void NativeJob::start(const JobRequest& input) {
         require(suite.at("kernelHashes") == readJson(request.root / "data/validation/forever_baseline.json").at("kernelHashes"), "Editor kernel identity mismatch");
     }
     const size_t candidates = suite.at("scenarios").size();
-    require(candidates && request.totalFights % candidates == 0 && request.totalFights / candidates >= 2 && request.totalFights / candidates <= 1048576 && request.totalFights <= 16777216, "Invalid fight count for selected candidates");
-    require(request.mode == "fast" || request.mode == "detailed" || request.mode == "regret", "Invalid simulation mode");
-    if (request.mode == "regret") {
-        require(request.runs == 1 && !request.rawReports, "Regret analysis is a single diagnostic job without raw reports");
+    require(candidates, "Empty candidate suite");
+    if (request.mode != "policy_benchmark") require(request.totalFights % candidates == 0 && request.totalFights / candidates >= 2 && request.totalFights / candidates <= 1048576 && request.totalFights <= 16777216, "Invalid fight count for selected candidates");
+    require(request.mode == "fast" || request.mode == "detailed" || request.mode == "regret" || request.mode == "policy_benchmark", "Invalid simulation mode");
+    if (request.mode == "policy_benchmark") {
+        require(request.benchmarkAlgo <= 1 && request.evolutionGenerations >= 1 && request.evolutionGenerations <= 16384 &&
+            request.evolutionPopulation >= 2 && request.evolutionPopulation <= 64 && request.evolutionSeed >= 1 && request.evolutionSeed <= 2147483646 &&
+            std::isfinite(request.evolutionSigma) && request.evolutionSigma > 0 && request.evolutionSigma <= 2 && request.benchmarkTrials >= 2 && request.benchmarkTrials <= (request.benchmarkAlgo == 1 ? 8192u : 64u) && request.benchmarkSeedStart <= 65535 &&
+            request.benchmarkSeedStart + request.benchmarkTrials <= 65536 &&
+            std::isfinite(request.benchmarkLearningRate) && request.benchmarkLearningRate >= 0 && request.benchmarkLearningRate <= 100,
+            "Invalid policy benchmark settings");
+        request.totalFights = request.benchmarkTrials * 2; // Actual evaluated fights, excluding search/replay work.
+    }
+    if (request.mode == "regret" || request.mode == "policy_benchmark") {
+        require(request.runs == 1 && !request.rawReports, "Regret/Policy analysis is a single diagnostic job without raw reports");
         require(request.regretCandidate < candidates && request.regretDecisions >= 1 && request.regretDecisions <= 128 &&
             request.regretRounds >= 1 && request.regretRounds <= 256 && request.regretSamples >= 2 && request.regretSamples <= 256 &&
             request.regretValidation >= 2 && request.regretValidation <= 4096 && request.regretDepth >= 1 && request.regretDepth <= 4,
@@ -139,7 +162,7 @@ void NativeJob::start(const JobRequest& input) {
 }
 void NativeJob::execute(JobRequest request) {
     Json summary = {{"schemaVersion", 1}, {"status", "running"}, {"frontend", "Dear ImGui native process client"},
-        {"computeBackend", request.mode == "regret" ? "Separate GPU regret diagnostic adapter" : "unchanged tools/run_native.lua + tools/vulkan_probe.c"},
+        {"computeBackend", (request.mode == "regret" || request.mode == "policy_benchmark") ? "Separate GPU regret/policy diagnostic adapter" : "unchanged tools/run_native.lua + tools/vulkan_probe.c"},
         {"presentation", request.presentation}, {"mode", request.mode}, {"totalFights", request.totalFights}, {"batchSize", request.batchSize},
         {"warmupBatches", request.warmupBatches}, {"requestedRuns", request.runs}, {"rawReports", request.rawReports}, {"histogram", request.histogram}, {"runs", Json::array()},
         {"timingScope", "GPU/native/steady metrics come from native engine. Client wall includes process startup and JSON loading. UI rendering mode is labeled separately; rendering performance is not inferred from headless results."},
@@ -164,12 +187,32 @@ void NativeJob::execute(JobRequest request) {
             activeRaw = request.outputDirectory / ("native-" + std::to_string(index + 1) + ".bin");
             if (request.mode == "detailed") activeDetails = request.outputDirectory / ("details-" + std::to_string(index + 1) + ".json");
             workDirectory = request.outputDirectory / ("work-" + std::to_string(index + 1));
-            std::vector<std::string> command = request.mode == "regret" ? std::vector<std::string>{"luajit", "tools/run_regret.lua"} : runner_;
-            if (request.mode == "regret") {
-                for (const auto& value : std::vector<std::string>{"--regret-candidate", std::to_string(request.regretCandidate),
-                    "--regret-decisions", std::to_string(request.regretDecisions), "--regret-rounds", std::to_string(request.regretRounds),
-                    "--regret-samples", std::to_string(request.regretSamples), "--regret-validation", std::to_string(request.regretValidation),
-                    "--regret-depth", std::to_string(request.regretDepth)}) command.push_back(value);
+            std::vector<std::string> command;
+            if (request.mode == "policy_benchmark") {
+                command = {"luajit", "tools/run_mcts.lua",
+                    "--candidate", std::to_string(request.regretCandidate),
+                    "--fights", std::to_string(request.benchmarkTrials),
+                    "--evaluation-start", std::to_string(request.benchmarkSeedStart),
+                    "--rounds", "16",
+                    "--depth", "3",
+                    "--samples", "8",
+                    "--c-puct", std::to_string(request.benchmarkLearningRate),
+                    "--apl-weight", "0.70",
+                    "--algorithm", request.benchmarkAlgo == 1 ? "neuroevolution" : "mcts",
+                    "--generations", std::to_string(request.evolutionGenerations),
+                    "--population", std::to_string(request.evolutionPopulation),
+                    "--mutation-sigma", std::to_string(request.evolutionSigma),
+                    "--evolution-seed", std::to_string(request.evolutionSeed)};
+            } else if (request.mode == "regret") {
+                command = {"luajit", "tools/run_regret.lua",
+                    "--regret-candidate", std::to_string(request.regretCandidate),
+                    "--regret-decisions", std::to_string(request.regretDecisions),
+                    "--regret-rounds", std::to_string(request.regretRounds),
+                    "--regret-samples", std::to_string(request.regretSamples),
+                    "--regret-validation", std::to_string(request.regretValidation),
+                    "--regret-depth", std::to_string(request.regretDepth)};
+            } else {
+                command = runner_;
             }
             for (const auto& value : std::vector<std::string>{"--total-fights", std::to_string(request.totalFights), "--batch-size", std::to_string(request.batchSize), "--warmup-batches", std::to_string(request.warmupBatches), "--output", activeOutput.string(), "--work-dir", workDirectory.string()}) command.push_back(value);
             if (request.mode == "detailed") { command.push_back("--mode"); command.push_back("detailed"); command.push_back("--details-output"); command.push_back(activeDetails.string()); }
@@ -228,19 +271,85 @@ void NativeJob::execute(JobRequest request) {
             require(!cancelRequested_.load(), "Cancelled");
             require(WIFEXITED(status) && WEXITSTATUS(status) == 0, "Native worker failed; inspect the captured log");
             Json result = readJson(activeOutput);
-            if (request.mode == "regret") {
-                require(result.at("schemaVersion") == 1 && result.at("status") == "complete" && result.at("mode") == "regret" &&
-                    result.at("reportReplay") == "bit-identical" && result.at("candidateId") == suite.at("scenarios")[request.regretCandidate].at("id") &&
-                    result.at("seed") == suite.at("seed") && result.at("fightIndex") == 0 && result.at("rows").is_array() &&
-                    result.at("rows").size() <= request.regretDecisions, "Invalid regret result identity");
-                if (!request.suiteSource.empty()) require(result.at("suiteHash") == request.suiteHash, "Regret suite snapshot mismatch");
-                for (const auto& row : result.at("rows")) {
-                    numeric(row, "time"); numeric(row, "dpsDelta"); numeric(row, "standardError");
-                    require(row.at("samples") == request.regretValidation, "Regret sample count mismatch");
+            if (request.mode == "regret" || request.mode == "policy_benchmark") {
+                require(result.at("schemaVersion") == (request.mode == "policy_benchmark" ? 2 : 1) && result.at("status") == "complete" &&
+                    result.at("mode") == request.mode && result.at("reportReplay") == "bit-identical" &&
+                    result.at("candidateId") == suite.at("scenarios")[request.regretCandidate].at("id") &&
+                    result.at("seed") == suite.at("seed") &&
+                    result.at("fightIndex") == (request.mode == "policy_benchmark" ? request.benchmarkSeedStart : 0), "Invalid diagnostic result identity");
+                if (!request.suiteSource.empty()) require(result.at("suiteHash") == request.suiteHash, "Diagnostic suite snapshot mismatch");
+                if (request.mode == "regret") {
+                    require(result.at("rows").is_array() && result.at("rows").size() <= request.regretDecisions, "Invalid regret rows");
+                    for (const auto& row : result.at("rows")) {
+                        numeric(row, "time"); numeric(row, "dpsDelta"); numeric(row, "standardError");
+                        require(row.at("samples") == request.regretValidation, "Regret sample count mismatch");
+                    }
+                } else {
+                    require(result.at("evaluationScope") == "complete_fights" && result.at("policyType") == (request.benchmarkAlgo == 1 ? "neuroevolution_mlp" : "receding_horizon_mcts") &&
+                        result.at("terminalVerified") == true && result.at("optimalityGuaranteed") == false &&
+                        result.at("results").is_array() && result.at("results").size() == request.benchmarkTrials &&
+                        result.at("completedFightPairs") == request.benchmarkTrials, "Invalid complete-policy result scope/count");
+                    for (const char* key : {"meanBaselineDps", "meanAlgoDps", "winRatePct", "standardError"}) numeric(result, key);
+                    diagnosticDelta(result, "dpsDelta"); diagnosticDelta(result, "dpsDeltaPct");
+                    const double ciLow = diagnosticDelta(result, "ciLow"), ciHigh = diagnosticDelta(result, "ciHigh");
+                    require(ciLow <= result.at("dpsDelta").get<double>() && ciHigh >= result.at("dpsDelta").get<double>() &&
+                        result.at("winRatePct").get<double>() <= 100 && result.at("confidenceLevel") == 0.95, "Invalid policy uncertainty");
+                    const auto& settings = result.at("settings");
+                    require(settings.at("fights") == request.benchmarkTrials && settings.at("rounds") == 16 &&
+                        settings.at("depth") == 3 && settings.at("samples") == 8 && settings.at("evaluationStart") == request.benchmarkSeedStart &&
+                        std::abs(settings.at("cPuct").get<double>() - request.benchmarkLearningRate) <= 1e-5,
+                        "Invalid policy controller settings");
+                    if (request.benchmarkAlgo == 1) {
+                        require(settings.at("generations") == request.evolutionGenerations && settings.at("population") == request.evolutionPopulation &&
+                            settings.at("evolutionSeed") == request.evolutionSeed && std::abs(settings.at("mutationSigma").get<double>() - request.evolutionSigma) < 1e-5 &&
+                            result.at("totalSearches") == 0 && result.at("actionSelection") == "masked_mlp_argmax" &&
+                            result.at("inferenceBackend") == "batched_gpu_full_fights" &&
+                            settings.at("trainingFights") == 1000 && result.at("trainingSeeds").size() == 1000 &&
+                            result.at("trainingCurve").size() == request.evolutionGenerations + 1 && result.at("network").at("version") == 2 &&
+                            result.at("network").at("inputs") == 75 && result.at("network").at("hidden") == 12 &&
+                            result.at("network").at("outputs") == 26 && result.at("network").at("weights").size() == 1250,
+                            "Invalid neuroevolution result");
+                        uint32_t generation = 0;
+                        for (const auto& point : result.at("trainingCurve")) {
+                            require(point.at("generation") == generation++, "Invalid training generation");
+                            numeric(point, "baselineDps"); numeric(point, "policyDps");
+                        }
+                    }
+                    uint32_t pair = 0;
+                    double baselineMean = 0, policyMean = 0, deltaMean = 0, deltaM2 = 0;
+                    uint64_t decisions = 0, searches = 0;
+                    uint32_t wins = 0;
+                    for (const auto& row : result.at("results")) {
+                        require(row.at("fightIndex") == request.benchmarkSeedStart + pair++ && row.at("terminalVerified") == true &&
+                            row.at("decisions").is_number_unsigned() && row.at("searches").is_number_unsigned() &&
+                            row.at("searches").get<uint32_t>() <= row.at("decisions").get<uint32_t>(), "Invalid complete fight pair");
+                        const double baseline = numeric(row, "baselineDps"), policy = numeric(row, "policyDps");
+                        require(std::abs(diagnosticDelta(row, "dpsDelta") - (policy - baseline)) < 1e-6, "Invalid paired DPS delta");
+                        baselineMean += baseline / request.benchmarkTrials; policyMean += policy / request.benchmarkTrials;
+                        const double delta = policy - baseline, change = delta - deltaMean;
+                        deltaMean += change / pair; deltaM2 += change * (delta - deltaMean);
+                        if (delta > 0) ++wins;
+                        decisions += row.at("decisions").get<uint32_t>(); searches += row.at("searches").get<uint32_t>();
+                    }
+                    require(std::abs(baselineMean - result.at("meanBaselineDps").get<double>()) < 1e-6 &&
+                        std::abs(policyMean - result.at("meanAlgoDps").get<double>()) < 1e-6 &&
+                        std::abs(policyMean - baselineMean - result.at("dpsDelta").get<double>()) < 1e-6,
+                        "Policy aggregate does not match complete fight pairs");
+                    const double standardError = std::sqrt(std::max(0.0, deltaM2) / (request.benchmarkTrials - 1) / request.benchmarkTrials);
+                    require(std::abs(result.at("standardError").get<double>() - standardError) < 1e-6 &&
+                        std::abs(result.at("winRatePct").get<double>() - 100.0 * wins / request.benchmarkTrials) < 1e-6 &&
+                        result.at("totalDecisions") == decisions && result.at("totalSearches") == searches,
+                        "Policy statistics do not match complete fight pairs");
+                    require(result.at("timeline").is_array() && result.at("timeline").size() == result.at("results")[0].at("decisions") &&
+                        !result.contains("curves") && !result.contains("analyzedDecisions"), "Invalid policy trajectory representation");
+                    require(result.at("timing").is_object(), "Missing policy search cost");
+                    for (const char* key : {"setupMs", "evaluationWallMs", "totalWallMs", "searchDispatchWallMs", "searchRolloutFights", "replayFights", "dispatches"}) numeric(result.at("timing"), key);
                 }
                 summary["analysis"] = result;
-                summary["timingScope"] = "Separate regret diagnostic; no benchmark throughput is measured or accepted.";
+                summary["timingScope"] = "Separate search/policy benchmark; no benchmark throughput is measured or accepted.";
                 activeOutput.clear(); fs::remove_all(workDirectory); workDirectory.clear();
+                saveJson(request.outputDirectory / "summary.json", summary);
+                { std::lock_guard<std::mutex> lock(mutex_); state_.completedFights = request.totalFights; state_.summary = summary; }
                 break;
             }
             Json timing = validateNativeResult(result, request, suite);
@@ -268,7 +377,7 @@ void NativeJob::execute(JobRequest request) {
             { std::lock_guard<std::mutex> lock(mutex_); state_.completedFights = request.totalFights; state_.summary = summary; }
         }
         require(!cancelRequested_.load(), "Cancelled");
-        if (request.mode != "regret") {
+        if (request.mode != "regret" && request.mode != "policy_benchmark") {
             summary["medians"] = Json::object();
             for (const char* metric : {"gpuComputeMs", "nativeWallMs", "executeReadbackMs", "cDecodeMs", "gpuSimsPerSecond", "nativeSimsPerSecond", "steadySimsPerSecond", "clientWallMs"}) {
                 std::vector<double> values; for (const auto& run : summary["runs"]) values.push_back(run["timing"][metric].get<double>());

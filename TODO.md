@@ -2,6 +2,22 @@
 
 **Native Vulkan/C compute + thin Dear ImGui frontend is the active application.** The frozen workload passed million-fight raw replay and five hardware presentation pairs: **1,565,063 headless / 1,566,647 GUI GPU fights/sec**, paused rendering, RX 5600 XT. [Evidence](validation/evidence/latest/rx5600xt_imgui_paired/summary.json). The LÖVE runtime/app/build dependencies and backend-specific tests are removed; only historical evidence and frozen-source compatibility remain.
 
+## Policy search: local diagnostics versus complete policy evaluation
+
+**Keep these two tasks separate.** The counterfactual/regret tab (`tools/run_regret.lua`) asks whether a different action at a sampled APL state would improve its continuation. The Policy Benchmark tab (`tools/run_mcts.lua`) now evaluates an experimental controller through complete fights on its own trajectory. Neither establishes a globally optimal policy.
+
+The earlier policy benchmark incorrectly averaged isolated counterfactuals from the APL baseline trajectory and presented that as policy performance. **Do not reintroduce that aggregation.** Taking an earlier alternative changes later mana, cooldowns, procs, timing and reachable states; baseline decision states cannot be stitched into a controller-driven fight. Independent test samples alone do not fix that scope error.
+
+The controller searches at its actual current decision state, commits only the first action, and replans at the resulting state. It uses deterministic replay of committed history with the live RNG stream; sampled rollout futures use separate seeds. A full-state/event-heap/RNG fingerprint checks the fork before reseeding. MCTS still uses hypothetical rollouts internally, with APL as its continuation heuristic and root prior. Root-action rollout warmup initializes search estimates; it is separate from discarded GPU timing warmup batches. Supported choices are constrained by the current candidate/action mask; off-GCD automation remains with the simulator/APL. This is an online controller, not a trained/exported APL or a proof of optimality.
+
+- [x] Implement an opt-in complete-fight controller that follows its own states; reject capacity exhaustion and partial trajectories instead of silently reverting the rest of the fight to APL.
+- [x] Score complete controller and APL fights on matched evaluation seeds, disjoint from search futures. Report whole-fight mean DPS delta, paired standard error/95% interval, complete-fight win fraction, sample count and search/replay wall cost. Schema version 2 rejects the previous local-diagnostic results.
+- [x] Add a regression case where an early action changes the next reachable action, mana and timing. Check complete-fight losses, actual-state fork identity, budget/identity rejection and terminal completion.
+- [x] Keep counterfactual diagnostics and policy evaluation distinct in UI and schemas. Show actual committed decisions only; never synthesize DPS/mana curves from local deltas. Keep core compute sources unchanged.
+- [ ] Evaluate controller quality across many independent complete-fight seeds, candidates and durations, using a separately held-out seed range after any budget/parameter tuning. The small correctness smoke tests are not evidence of an improvement over APL.
+- [ ] Measure online-controller cost on hardware. Full-prefix replay currently trades speed for correctness; consider a verified native snapshot/resume interface for scaling. Online search throughput must remain distinct from the frozen ~1.56M GPU fights/sec fast workload.
+- [ ] Rerun the hardware replay/performance gates if future work changes core compute. Keep MCTS and per-decision orchestration opt-in and outside the default fast path.
+
 ## 1. Extract a persistent native engine
 
 - [ ] Refactor `tools/vulkan_probe.c` into a reusable C library with an explicit ABI, errors and resource ownership. The current UI safely isolates its exit-on-error behavior in a worker process; it is not an in-process engine yet.
@@ -48,5 +64,5 @@ Target no measurable regression from attaching UI. The historical ~1.56M GPU rat
 - [ ] Build **1,000 distinct APL/talent candidates × 1,000 fights** with documented diversity, exact replay and full timings. Shared specialization leaves differing settings as runtime data; stats/APLs always remain runtime inputs. Their speed is unmeasured.
 - [ ] Add generic wave32 independently of specialization; the native CLI currently ties explicit subgroup overrides to specialization.
 - [ ] Add reproducible APL evolution with held-out seeds and independent finalist reevaluation.
-- [ ] Define observations/normalization/action masks/weights/objectives/checkpoints before neural inference, and prefix/snapshot/rollout semantics before MCTS. No forecast is a measurement.
+- [ ] Define observations/normalization/action masks/weights/objectives/checkpoints before neural inference. Experimental MCTS controller quality and replay/snapshot scaling are tracked above; no forecast is a measurement.
 - [ ] Add validated persistence/config resolution, additional classes with independent accuracy suites, and desktop packaging after current engine/job goals.

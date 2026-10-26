@@ -28,6 +28,13 @@ struct JobRequest {
     uint32_t regretSamples = 16;
     uint32_t regretValidation = 1000;
     uint32_t regretDepth = 1;
+    uint32_t benchmarkTrials = 8; // Complete matched fight pairs for the online controller.
+    uint32_t benchmarkSeedStart = 0; // Choose a fresh evaluation range after tuning.
+    float benchmarkLearningRate = 2.0f;
+    uint32_t benchmarkAlgo = 0;
+    uint32_t evolutionGenerations = 1024, evolutionPopulation = 32;
+    float evolutionSigma = 0.1f;
+    uint32_t evolutionSeed = 42;
     std::string mode = "fast";
     std::string presentation = "headless";
     std::string suiteSource; // Empty selects the unchanged frozen benchmark.
@@ -44,6 +51,7 @@ struct JobSnapshot {
     uint32_t completedFights = 0;
     uint32_t totalFights = 0;
     nlohmann::json summary;
+    nlohmann::json trainingCurve = nlohmann::json::array();
 };
 // Process isolation retains the existing engine's failure/cleanup semantics.
 // No UI callbacks, graphics APIs, report decoding, or command buffers live here.

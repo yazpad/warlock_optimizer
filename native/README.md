@@ -35,6 +35,31 @@ Defaults: three runs of one million fights, shared-feature specialization, requi
 
 Each submission gets a fresh directory under `artifacts/imgui/`, or the explicitly supplied **new** `--output-dir`. `native-N.json` preserves each original native result. `summary.json` records timing scope, presentation mode, accepted repeats, medians, UI observations and errors. Engine build key, runner hash, suite/kernel/input identity and variant come from native output. GPU, C aggregation, native full-run, native steady and client-process times remain separate; GUI rates are not inferred from native historical numbers.
 
+## Complete-fight policy evaluation versus counterfactual diagnostics
+
+The Policy Benchmark tab evaluates an online MCTS + PUCT controller across complete fights. It searches at the current state, commits one action, and replans from the resulting state. APL supplies search rollout continuations and a root prior. Choices are limited to the configured candidate/action mask; the simulator/APL retains off-GCD automation. Search budgets are fixed before evaluation. No globally optimal or trained/exported policy is claimed.
+
+```sh
+./tools/run.sh --headless --policy-benchmark --policy-fights 8 --policy-puct 2
+# Freeze the tuned controller and evaluate a fresh, non-overlapping seed range:
+./tools/run.sh --headless --policy-benchmark --policy-fights 32 --policy-seed-start 128
+# Small correctness check, including the actual frontend/worker result validation:
+node validation/policy.mjs
+# Full-report parity when forcing APL recommendations, including off-GCD rows:
+node validation/policy_replay.mjs
+```
+
+PUCT allocates the search budget. Before committing an action, the controller
+compares discovered prefixes and one-action APL continuations on at least 32
+fresh, shared search seeds. It retains APL unless an alternative improves the
+paired mean by more than four estimated standard errors. This local noise guard
+is not a multiple-comparison or policy-level confidence guarantee. The first
+fight's timeline includes these validation means, paired gains and errors.
+
+The counterfactual/regret tab remains for local comparisons at baseline APL states. Those results do not measure a controller over a full fight. Do not aggregate them into policy scores. The policy result uses schema version 2 and `evaluationScope: complete_fights`; old local results are rejected. Its mean DPS is over complete fights, its delta and uncertainty are paired by initial seed, and its win fraction counts complete fights. Evaluation seeds are separate from search futures. Use many fight pairs and separate held-out seeds after tuning before claiming an improvement.
+
+The first controller fight's timeline shows actual chosen actions and APL recommendations at those same controller states, not moves from the separate APL fight. No synthetic DPS or mana curves are generated. Deterministic full-prefix replay reconstructs the controller's current state and checks the state/event-heap/RNG fingerprint before rollout reseeding. This is slower than snapshot/resume; wall time, search rollouts and replay counts are reported separately. The default fast simulation path and frozen ~1.56M GPU throughput workload are unchanged.
+
 ## Correctness and performance gates
 
 ```sh
@@ -225,3 +250,71 @@ Saved results can be inspected without recomputing:
 The JavaScript integration check uses small correctness workloads, a 1,000-sample
 batched case, five-build replay, delayed Doom ticks, artifact routing, and
 cancellation. It makes no throughput claim.
+
+Policy Benchmark also offers **Neuroevolution MLP**. Select it in the Algorithm
+menu, set generations, population, mutation sigma and evolution seed, then run.
+The live graph compares APL with the new generation and best retained MLP,
+using 1,000 fixed training seeds per policy.
+Generation zero uses randomized hidden weights and zero output weights, reproducing
+APL behavior exactly with a 0.1 score prior. Selection preserves the best model
+and retains four parents, allowing neutral replacements. Proposals mix 0.25x,
+1x and 4x mutation scales, normalized by layer fan-in, and alternate output-row
+mutations with whole-network mutations. The network has 75 inputs, 12 tanh hidden
+units and 26 masked action scores (1,250 parameters, network version 2).
+Inputs include time, scaled mana/damage, legality, the APL recommendation and 20
+normalized combat features: remaining fight time, DoT durations, cooldowns and
+buff durations/charges. Off-GCD preparation retains the adapter's APL behavior.
+There is no MCTS or action rollout search for this policy.
+
+Neural defaults are 1,024 generations, population 32, sigma 0.1 and 2,048
+held-out fight pairs in the UI/CLI. These are starting settings, not tuned optima.
+Limits are 16,384 generations, population 64 and 8,192 neural evaluation pairs
+(MCTS remains capped at 64). The CLI accepts `--evolution-sigma`.
+Training indices 65536–66535 are separate from evaluation indices 0–65535;
+evaluation ranges crossing that boundary are rejected. Use a fresh evaluation
+range for final reporting after tuning, and repeat across evolution seeds.
+Only the first evaluated neural fight captures a full timeline; other fights
+and their APL baselines are batched with compact reports.
+The final best retained MLP is frozen for complete matched evaluation fights; use those
+paired results to assess improvement, since the training graph can overfit.
+The result JSON includes training history, seeds and network weights. Neural
+inference runs inside the GPU fight loop: a generation stores each network once, then batches all mutants and
+their 1,000 common seeds in chunks of up to 32,768 lanes, without per-action prefix replay or host
+round trips. The elite's unchanged fitness is cached. This throughput differs
+from the production APL simulator: network inference, small training batches,
+worker round trips and pipeline startup all add cost. The results show setup,
+training and measured neural fights/second separately. The initial APL dispatch
+warms the neural kernel before the training timer starts; the reported neural
+rate excludes that startup and includes worker round trips.
+
+The APL training baseline is a thick gold horizontal reference with a numeric
+axis label; the green best retained MLP has point markers. When both scores match, the
+gold reference remains visible underneath. Axis padding keeps the threshold
+inside the plot even with a flat curve or just generation zero.
+
+```sh
+artifacts/imgui-build/fastsim-imgui --headless --policy-benchmark \
+  --policy-algorithm neuroevolution --evolution-seed 42 \
+  --policy-seed-start 32768
+node validation/policy.mjs --neuroevolution
+node validation/neuro_gpu.mjs
+```
+
+The training graph defaults to the APL and retained best, with a tightly fitted
+axis so small improvements remain visible. Enable **Show mutation scores** to
+include the new generation's mean and best, with a shaded worst-to-best range. These exclude the cached previous best and can fall below
+APL. The separate best retained MLP curve includes the previous best and is
+nondecreasing on the fixed training cohort. GPU time and dispatch/transfer time
+are reported separately; the optimized APL throughput is not the neural rate.
+
+Repeat neuroevolution runs without selecting the best held-out result:
+
+```sh
+node tools/benchmark_neuro.mjs --suite path/to/suite.json --seeds 13,42,73,101,137
+```
+
+The sweep defaults to evaluation indices 32768–34815 and saves every model, log,
+paired interval and training throughput. It reports each evolution seed separately;
+the runs share evaluation seeds and must not be pooled as independent fight pairs.
+Training curves also report counts of improved/equal-fitness candidates (equal
+fitness does not imply identical actions).

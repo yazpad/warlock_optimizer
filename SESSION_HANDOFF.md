@@ -1,5 +1,9 @@
 # Fastsim handoff — 2026-10-24
 
+## Policy benchmark scope — read before continuing search work
+
+The Policy Benchmark now runs an experimental MCTS controller through complete fights, committing one action and replanning at its own next state. Results use schema 2: complete paired-fight DPS, uncertainty, fight wins and explicit search/replay cost. The counterfactual/regret tab remains a separate local diagnostic. **Never average isolated baseline-trajectory counterfactuals and label that policy performance again.** Full-prefix deterministic replay supplies current states; search futures use separate seeds and a full-state/heap/RNG fingerprint verifies each fork. This is APL-guided online search, not a trained APL or a guarantee of optimality. Quality across broad held-out seeds and hardware search cost remain unproven. See [scope, acceptance checks and remaining work](TODO.md#policy-search-local-diagnostics-versus-complete-policy-evaluation).
+
 ## Current position
 
 The native Dear ImGui frontend passed its hardware gate: **1,566,647 GUI-attached GPU fights/sec versus 1,565,063 headless**, five alternating pairs on RX 5600 XT / RADV NAVI10. One million fights / 16 million report words matched exactly across presentation modes. Paused mode issued zero UI render frames during jobs. GPU-time ratio 0.998989 and steady-time ratio 0.995598 pass the ≤2% / ≤5% relative-overhead ceilings.

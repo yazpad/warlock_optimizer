@@ -34,6 +34,6 @@ The persistent in-process C library is not extracted yet. Worker-process startup
 
 1. **Forever accuracy:** current five-case saved-reference MAE is 1.0424 DPS with approximate simultaneous bounds 0–4.1103. Input/APL/schema audits and reference precision remain unresolved. Accepted ≤1 DPS MAE is unfinished.
 2. **Coverage:** distinct mixed candidates, diverse APL/talent populations, detailed/edge cases, native worker recovery and continuous live-UI performance need broader hardware coverage.
-3. **Search/product:** arbitrary candidate submission, persistence, APL evolution, neural/MCTS policies, other classes and packaging remain backlog items.
+3. **Search/product:** the Policy Benchmark now evaluates an experimental MCTS controller through complete fights on its own trajectory, separately from counterfactual/regret diagnostics. Broad held-out quality and hardware search cost remain unproven; see [the scope and remaining work](TODO.md#policy-search-local-diagnostics-versus-complete-policy-evaluation). Persistence, APL evolution, neural policies, other classes and packaging remain backlog items.
 
 The frozen combat/suite snapshots and exact wrapped Vulkan compiler inputs were preserved during backend removal. Historical LÖVE diagnostic/build/benchmark evidence remains under `validation/evidence/`; it is not an active runtime or performance target. No further LÖVE integration is planned.

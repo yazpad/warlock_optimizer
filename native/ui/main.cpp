@@ -39,10 +39,26 @@ static uint32_t parseNumber(const std::string& text) {
 }
 static Options arguments(int argc, char** argv) {
     Options options; options.request.histogram = true; options.request.root = FASTSIM_SOURCE_DIR;
+    bool explicitPolicyFights = false;
     for (int i = 1; i < argc; ++i) {
         const std::string name = argv[i];
         auto value = [&]() { if (++i >= argc) throw std::runtime_error("Missing " + name); return std::string(argv[i]); };
         if (name == "--regret") { options.request.mode = "regret"; options.request.runs = 1; options.request.histogram = false; }
+        else if (name == "--policy-benchmark") { options.request.mode = "policy_benchmark"; options.request.runs = 1; options.request.histogram = false; }
+        else if (name == "--policy-algorithm") { const auto algo = value();
+            if (algo != "mcts" && algo != "neuroevolution") throw std::runtime_error("Invalid policy algorithm");
+            options.request.benchmarkAlgo = algo == "neuroevolution" ? 1 : 0; }
+        else if (name == "--evolution-generations") options.request.evolutionGenerations = parseNumber(value());
+        else if (name == "--evolution-population") options.request.evolutionPopulation = parseNumber(value());
+        else if (name == "--evolution-seed") options.request.evolutionSeed = parseNumber(value());
+        else if (name == "--policy-fights") { options.request.benchmarkTrials = parseNumber(value()); explicitPolicyFights = true; }
+        else if (name == "--evolution-sigma") { const std::string text = value(); size_t end = 0;
+            options.request.evolutionSigma = std::stof(text, &end);
+            if (end != text.size()) throw std::runtime_error("Invalid mutation sigma"); }
+        else if (name == "--policy-seed-start") options.request.benchmarkSeedStart = parseNumber(value());
+        else if (name == "--policy-puct") { const std::string text = value(); size_t end = 0;
+            options.request.benchmarkLearningRate = std::stof(text, &end);
+            if (end != text.size()) throw std::runtime_error("Invalid PUCT weight"); }
         else if (name == "--regret-decisions") options.request.regretDecisions = parseNumber(value());
         else if (name == "--regret-rounds") options.request.regretRounds = parseNumber(value());
         else if (name == "--regret-samples") options.request.regretSamples = parseNumber(value());
@@ -70,6 +86,9 @@ static Options arguments(int argc, char** argv) {
         else if (name == "--screenshot") options.screenshot = value();
         else if (name == "--help") {
             std::cout << "Fastsim / thin Dear ImGui frontend\n"
+                "  --policy-benchmark          Complete-fight MCTS controller evaluation\n"
+                "  --policy-fights N --policy-puct X --policy-seed-start N\n"
+                "  --policy-algorithm mcts|neuroevolution --evolution-generations N --evolution-population N --evolution-seed N --evolution-sigma X\n"
                 "  --regret                    GPU regret analysis (one separate diagnostic job)\n"
                 "  --regret-result PATH        Inspect a saved regret summary without simulation\n"
                 "  --regret-decisions N --regret-rounds N --regret-samples N --regret-validation N --regret-depth N\n"
@@ -84,22 +103,32 @@ static Options arguments(int argc, char** argv) {
             std::exit(0);
         } else throw std::runtime_error("Unknown option: " + name);
     }
+    if (options.request.benchmarkAlgo == 1 && !explicitPolicyFights) options.request.benchmarkTrials = 2048;
     options.request.presentation = options.headless ? "headless" : options.computePriority ? "rendering-paused" : "visible-10hz";
     return options;
 }
 static void printSummary(const JobSnapshot& snapshot) {
     if (snapshot.status == "complete") {
-        if (snapshot.summary.at("mode") == "regret") {
+        if (snapshot.summary.value("mode", "") == "regret") {
             const auto& analysis = snapshot.summary.at("analysis");
             std::cout << "Regret analysis: " << analysis.at("analyzedDecisions") << " decisions; exact baseline replay passed\n";
             std::cout << "Saved " << snapshot.outputDirectory << "/summary.json\n";
             return;
         }
-        const auto& median = snapshot.summary.at("medians");
-        std::cout << "Native engine median (" << snapshot.summary.at("presentation").get<std::string>() << "): GPU "
-            << static_cast<uint64_t>(median.at("gpuSimsPerSecond").get<double>()) << " sims/sec; native wall "
-            << static_cast<uint64_t>(median.at("nativeSimsPerSecond").get<double>()) << " sims/sec; steady "
-            << static_cast<uint64_t>(median.at("steadySimsPerSecond").get<double>()) << " sims/sec\n";
+        if (snapshot.summary.value("mode", "") == "policy_benchmark") {
+            const auto& analysis = snapshot.summary.at("analysis");
+            std::cout << "Policy benchmark: " << analysis.value("completedFightPairs", 0) << " complete fight pairs; policy DPS: "
+                      << analysis.value("meanAlgoDps", 0.0) << " vs Baseline: " << analysis.value("meanBaselineDps", 0.0) << "\n";
+            std::cout << "Saved " << snapshot.outputDirectory << "/summary.json\n";
+            return;
+        }
+        if (snapshot.summary.contains("medians")) {
+            const auto& median = snapshot.summary.at("medians");
+            std::cout << "Native engine median (" << snapshot.summary.at("presentation").get<std::string>() << "): GPU "
+                << static_cast<uint64_t>(median.at("gpuSimsPerSecond").get<double>()) << " sims/sec; native wall "
+                << static_cast<uint64_t>(median.at("nativeSimsPerSecond").get<double>()) << " sims/sec; steady "
+                << static_cast<uint64_t>(median.at("steadySimsPerSecond").get<double>()) << " sims/sec\n";
+        }
     } else std::cerr << snapshot.status << ": " << snapshot.error << '\n' << snapshot.log;
     std::cout << "Saved " << snapshot.outputDirectory << "/summary.json\n";
 }
@@ -255,7 +284,9 @@ static int gui(Options options) {
     std::vector<DpsHistogram> histograms;
     DetailedView detailedView;
     int regretFocusFrames = 0;
+    int policyFocusFrames = 0;
     nlohmann::json regretAnalysis;
+    nlohmann::json policyAnalysis;
     if (!options.regretResult.empty()) {
         std::ifstream input(options.regretResult);
         if (!input) throw std::runtime_error("Cannot open saved regret analysis");
@@ -291,12 +322,15 @@ static int gui(Options options) {
         if (!job.running() && state.status != "idle" && !reported) {
             job.wait(); state = job.snapshot(); savePresentation(state, true, framesDuringJobs); printSummary(state); reported = true;
             std::cout << "UI frames during native job: " << framesDuringJobs << '\n';
-            if (state.status == "complete" && state.summary.at("mode") != "regret" && options.request.histogram) {
+            if (state.status == "complete" && state.summary.at("mode") != "regret" && state.summary.at("mode") != "policy_benchmark" && options.request.histogram) {
                 try {
-                    for (const auto& row : state.summary.at("runs").back().at("native").at("results")) histograms.push_back(histogramFromResult(row));
+                    if (state.summary.contains("runs") && !state.summary.at("runs").empty()) {
+                        for (const auto& row : state.summary.at("runs").back().at("native").at("results")) histograms.push_back(histogramFromResult(row));
+                    }
                 } catch (const std::exception& e) { histograms.clear(); histogramError = e.what(); }
             }
             if (state.status == "complete" && state.summary.at("mode") == "regret") { regretAnalysis = state.summary.at("analysis"); regretFocusFrames = 2; }
+            if (state.status == "complete" && state.summary.at("mode") == "policy_benchmark") { policyAnalysis = state.summary.at("analysis"); policyFocusFrames = 2; }
             if (state.status == "complete" && state.summary.at("mode") == "detailed") {
                 try { detailedView.load(state.summary.at("runs").back().at("native").at("details").at("path").get<std::string>()); }
                 catch (const std::exception& e) { error = e.what(); }
@@ -304,9 +338,10 @@ static int gui(Options options) {
             if (options.benchmark) { done = true; continue; }
         }
         const bool busy = job.running();
-        const bool paused = job.running() && options.computePriority;
+        const bool liveTraining = submittedRequest.mode == "policy_benchmark" && submittedRequest.benchmarkAlgo == 1;
+        const bool paused = job.running() && options.computePriority && !liveTraining;
         if (paused) {
-            const std::string title = submittedRequest.mode == "regret" ? "WoW Forever Optimizer / " + state.phase + " / Esc to cancel" : "WoW Forever Optimizer / Computing / Run " + std::to_string(state.run) + " / " + std::to_string(state.completedFights) + " fights / Esc to cancel";
+            const std::string title = (submittedRequest.mode == "regret" || submittedRequest.mode == "policy_benchmark") ? "WoW Forever Optimizer / " + state.phase + " / Esc to cancel" : "WoW Forever Optimizer / Computing / Run " + std::to_string(state.run) + " / " + std::to_string(state.completedFights) + " fights / Esc to cancel";
             SDL_SetWindowTitle(window, title.c_str());
             SDL_Delay(50); continue; // No renderer frame, swap, or GPU work while native job runs.
         }
@@ -350,9 +385,14 @@ static int gui(Options options) {
         // RIGHT PANEL: Action tabs (Simulate, Analyze Regret, Policy Benchmark, Diagnostics)
         ImGui::BeginChild("right_pane", ImVec2(rightWidth, paneHeight), false, ImGuiWindowFlags_None);
         static int selectedRegretAction = 0;
-        static int policyAlgo = 0;
-        static int benchmarkTrials = 1000;
-        static float learningRate = 0.05f;
+        static int policyAlgo = static_cast<int>(options.request.benchmarkAlgo);
+        static int evolutionGenerations = static_cast<int>(options.request.evolutionGenerations);
+        static int evolutionPopulation = static_cast<int>(options.request.evolutionPopulation);
+        static int evolutionSeed = static_cast<int>(options.request.evolutionSeed);
+        static float evolutionSigma = options.request.evolutionSigma;
+        static int benchmarkTrials = 8;
+        static int policySeedStart = static_cast<int>(options.request.benchmarkSeedStart);
+        static float learningRate = 2.0f;
 
         if (ImGui::BeginTabBar("right_tabs", ImGuiTabBarFlags_None)) {
             // TAB 1: Simulate
@@ -576,7 +616,7 @@ static int gui(Options options) {
                             row.at("shadowTrance").get<bool>() ? "active" : "inactive", row.at("samples").get<uint32_t>());
 
                         if (isOptimal) {
-                            ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "Action taken (%s) matched the optimal policy.", taken.c_str());
+                            ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "Action taken (%s) had the highest estimated DPS among tested alternatives.", taken.c_str());
                         } else {
                             ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f), "Suboptimal action taken (%s): missing +%.2f DPS vs %s",
                                 taken.c_str(), delta, best.c_str());
@@ -600,150 +640,184 @@ static int gui(Options options) {
             }
 
             // TAB 3: Policy Benchmark
-            if (ImGui::BeginTabItem("Policy Benchmark")) {
-                ImGui::TextDisabled("Compare current APL against search / RL algorithms for optimal policy generation.");
-                const char* algos[] = {"Monte Carlo Tree Search (MCTS)", "Deep Q-Learning / PPO", "Genetic Algorithm (APL Mutation)", "Branch & Bound Pruning"};
-                ImGui::SetNextItemWidth(260);
-                ImGui::Combo("Algorithm", &policyAlgo, algos, IM_ARRAYSIZE(algos));
+            ImGuiTabItemFlags policyTabFlags = ImGuiTabItemFlags_None;
+            if (policyFocusFrames > 0) {
+                policyTabFlags |= ImGuiTabItemFlags_SetSelected;
+                --policyFocusFrames;
+            }
+            if (ImGui::BeginTabItem("Policy Benchmark", nullptr, policyTabFlags)) {
+                ImGui::TextWrapped("Compare complete policies against the original APL on matched evaluation seeds. Neuroevolution trains a small MLP by mutation and selection, with no MCTS.");
+                const char* algos[] = {"MCTS + PUCT controller", "Neuroevolution MLP"};
+                ImGui::SetNextItemWidth(230);
+                if (ImGui::Combo("Algorithm", &policyAlgo, algos, IM_ARRAYSIZE(algos)))
+                    benchmarkTrials = policyAlgo == 1 ? 2048 : 8;
                 ImGui::SameLine();
-                ImGui::SetNextItemWidth(140);
-                ImGui::InputInt("Benchmark Trials", &benchmarkTrials, 100, 1000);
+                ImGui::SetNextItemWidth(110);
+                ImGui::InputInt("Fight pairs", &benchmarkTrials, 1, 4);
+                benchmarkTrials = std::clamp(benchmarkTrials, 2, policyAlgo == 1 ? 8192 : 64);
                 ImGui::SameLine();
-                ImGui::SetNextItemWidth(120);
-                ImGui::InputFloat("Learning Rate / Temp", &learningRate, 0.01f, 0.1f, "%.3f");
-
-                ImGui::BeginDisabled(busy);
+                ImGui::SetNextItemWidth(110);
+                if (policyAlgo == 0) ImGui::InputFloat("PUCT weight", &learningRate, 0.1f, 0.5f, "%.2f");
+                if (policyAlgo == 1) {
+                    ImGui::InputInt("Generations", &evolutionGenerations); evolutionGenerations = std::clamp(evolutionGenerations, 1, 16384);
+                    ImGui::InputInt("Population", &evolutionPopulation); evolutionPopulation = std::clamp(evolutionPopulation, 2, 64);
+                    ImGui::InputFloat("Mutation sigma", &evolutionSigma, 0.01f, 0.1f); evolutionSigma = std::clamp(evolutionSigma, 0.001f, 2.0f);
+                    ImGui::InputInt("Evolution seed", &evolutionSeed); evolutionSeed = std::clamp(evolutionSeed, 1, 2147483646);
+                }
+                ImGui::SetNextItemWidth(110);
+                ImGui::InputInt("Evaluation seed start", &policySeedStart, 64, 128);
+                policySeedStart = std::clamp(policySeedStart, 0, 65536 - benchmarkTrials);
+                ImGui::BeginDisabled(busy || pending);
                 if (ImGui::Button("Run Policy Benchmark", ImVec2(180, 0))) {
-                    // UI stub - ready for backend hookup
+                    try {
+                        JobRequest request = options.request;
+                        if (frozenBenchmark) { request.suiteSource.clear(); request.suiteHash.clear(); request.candidateSource.clear(); }
+                        else { editor->submit(request); request.regretCandidate = 0; }
+                        request.mode = "policy_benchmark";
+                        request.runs = 1;
+                        request.rawReports = false;
+                        request.benchmarkTrials = static_cast<uint32_t>(benchmarkTrials);
+                        request.benchmarkLearningRate = learningRate;
+                        request.benchmarkSeedStart = static_cast<uint32_t>(policySeedStart);
+                        request.benchmarkAlgo = static_cast<uint32_t>(policyAlgo);
+                        request.evolutionGenerations = static_cast<uint32_t>(evolutionGenerations);
+                        request.evolutionPopulation = static_cast<uint32_t>(evolutionPopulation);
+                        request.evolutionSigma = evolutionSigma;
+                        request.evolutionSeed = static_cast<uint32_t>(evolutionSeed);
+                        submittedRequest = std::move(request);
+                        pending = true;
+                        error.clear();
+                    } catch (const std::exception& e) { error = e.what(); }
                 }
                 ImGui::EndDisabled();
-                ImGui::SameLine();
-                ImGui::TextDisabled("(Evaluates active APL vs %s across %d trials)", algos[policyAlgo], benchmarkTrials);
-
-                if (ImGui::BeginTable("policy_benchmark_preview", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-                    ImGui::TableSetupColumn("Policy Source", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn("Mean DPS", ImGuiTableColumnFlags_WidthFixed, 90);
-                    ImGui::TableSetupColumn("Delta", ImGuiTableColumnFlags_WidthFixed, 80);
-                    ImGui::TableSetupColumn("Convergence / Win Rate", ImGuiTableColumnFlags_WidthFixed, 150);
-                    ImGui::TableHeadersRow();
-
-                    ImGui::TableNextRow();
-                    ImGui::TableNextColumn(); ImGui::Text("Active APL (Baseline)");
-                    ImGui::TableNextColumn(); ImGui::Text("542.8");
-                    ImGui::TableNextColumn(); ImGui::TextDisabled("Baseline");
-                    ImGui::TableNextColumn(); ImGui::TextDisabled("-");
-
-                    ImGui::TableNextRow();
-                    ImGui::TableNextColumn(); ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "Algorithm Policy (%s)", algos[policyAlgo]);
-                    ImGui::TableNextColumn(); ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "588.4");
-                    ImGui::TableNextColumn(); ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "+45.6 DPS (+8.4%%)");
-                    ImGui::TableNextColumn(); ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "88.4%% win rate (iter 740)");
-
-                    ImGui::EndTable();
+                ImGui::TextWrapped("Use a fresh evaluation seed range after tuning. The MLP uses time, mana, damage, legal actions and the current APL recommendation, with an APL score prior. Training runs separately from the fast simulator.");
+                const auto& training = busy && submittedRequest.mode == "policy_benchmark" ? state.trainingCurve :
+                    (policyAnalysis.contains("trainingCurve") ? policyAnalysis["trainingCurve"] : state.trainingCurve);
+                if (training.is_array() && !training.empty()) {
+                    std::vector<double> generations, apl, evolved, generationBest, generationMean, generationWorst;
+                    for (const auto& point : training) {
+                        generations.push_back(point.at("generation").get<double>());
+                        apl.push_back(point.at("baselineDps").get<double>());
+                        evolved.push_back(point.at("policyDps").get<double>());
+                        generationBest.push_back(point.value("generationBestDps", evolved.back()));
+                        generationMean.push_back(point.value("generationMeanDps", evolved.back()));
+                        generationWorst.push_back(point.value("generationWorstDps", evolved.back()));
+                    }
+                    const auto trainingFights = training.back().value("trainingFights", 2u);
+                    ImGui::Text("Generation %.0f: APL %.2f DPS; best retained MLP %.2f DPS (%u training fights each)", generations.back(), apl.back(), evolved.back(), trainingFights);
+                    ImGui::Text("Retained training gain: %+.3f DPS (%+.3f%%)", evolved.back() - apl.back(),
+                        apl.back() > 0 ? (evolved.back() - apl.back()) * 100 / apl.back() : 0);
+                    static bool showMutations = false;
+                    ImGui::Checkbox("Show mutation scores", &showMutations);
+                    if (ImPlot::BeginPlot("Neuroevolution training", ImVec2(-1, 220))) {
+                        const double baseline = apl.front();
+                        const double low = showMutations ? std::min(baseline, *std::min_element(generationWorst.begin(), generationWorst.end())) : baseline;
+                        const double high = std::max(baseline, *std::max_element(evolved.begin(), evolved.end()));
+                        const double padding = showMutations ? std::max(1.0, std::max(baseline * 0.03, (high - low) * 0.15))
+                            : std::max(0.05, (high - low) * 0.15);
+                        ImPlot::SetupAxes("Generation", "Mean whole-fight DPS");
+                        ImPlot::SetupAxisLimits(ImAxis_X1, 0, std::max(1.0, generations.back()), ImGuiCond_Always);
+                        ImPlot::SetupAxisLimits(ImAxis_Y1, low - padding, high + padding, ImGuiCond_Always);
+                        ImPlotSpec threshold;
+                        threshold.LineColor = ImVec4(1.0f, 0.72f, 0.20f, 1.0f);
+                        threshold.LineWeight = 4;
+                        threshold.Flags = ImPlotInfLinesFlags_Horizontal;
+                        ImPlot::PlotInfLines("APL on training seeds", &baseline, 1, threshold);
+                        ImPlot::TagY(baseline, threshold.LineColor, "APL %.2f", baseline);
+                        ImPlotSpec range;
+                        range.FillColor = ImVec4(0.65f, 0.35f, 0.9f, 0.18f);
+                        if (showMutations) ImPlot::PlotShaded("Generation range", generations.data(), generationWorst.data(), generationBest.data(), static_cast<int>(generations.size()), range);
+                        ImPlotSpec current;
+                        current.LineColor = ImVec4(0.2f, 0.85f, 1, 1);
+                        current.Marker = ImPlotMarker_Circle;
+                        if (showMutations) ImPlot::PlotLine("Generation mean", generations.data(), generationMean.data(), static_cast<int>(generations.size()), current);
+                        current.LineColor = ImVec4(0.8f, 0.45f, 1, 1);
+                        if (showMutations) ImPlot::PlotLine("Generation best", generations.data(), generationBest.data(), static_cast<int>(generations.size()), current);
+                        current.LineColor = ImVec4(0.3f, 1, 0.45f, 1);
+                        ImPlot::PlotLine("Best retained MLP", generations.data(), evolved.data(), static_cast<int>(evolved.size()), current);
+                        ImPlot::EndPlot();
+                    }
+                    ImGui::Text("Current generation: mean %.2f; best %.2f; worst %.2f DPS", generationMean.back(), generationBest.back(), generationWorst.back());
+                    if (training.back().contains("improvedCandidates"))
+                        ImGui::Text("Mutants: %u improved; %u matched the previous best fitness",
+                            training.back().value("improvedCandidates", 0u), training.back().value("equalFitnessCandidates", 0u));
+                    ImGui::TextWrapped("Generation scores include new mutations only, so they can fall below APL. Best retained MLP includes the previous best and never decreases on these fixed training seeds.");
+                    if (training.back().contains("elapsedTrainingMs")) {
+                        const double seconds = training.back()["elapsedTrainingMs"].get<double>() / 1000.0;
+                        ImGui::Text("Training elapsed: %.2fs; %.2f generations/s", seconds, seconds > 0 ? generations.back() / seconds : 0);
+                    }
+                    ImGui::TextWrapped("APL and each MLP use the same %u training seeds. Final paired results below use separate evaluation seeds. Training gains may not generalize.", trainingFights);
                 }
-
-                ImGui::Spacing();
-                if (ImGui::BeginTabBar("policy_charts_tabs")) {
-                    if (ImGui::BeginTabItem("Timeline of Moves")) {
-                        const double yTicks[] = {0.0, 1.0};
-                        const char* yLabels[] = {"Active APL", "Learned Policy"};
-
-                        static const double baseTimes[] = { 0.0, 1.5, 3.5, 6.5, 9.5, 12.5, 15.0, 17.5, 20.0, 22.5, 25.0, 27.5, 30.0 };
-                        static const double baseYs[]    = { 0.0, 0.0, 0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0 };
-
-                        static const double algoTimes[] = { 0.0, 1.5, 3.0, 5.5, 8.0, 10.5, 13.0, 15.5, 18.0, 20.5, 23.0, 25.5, 28.0, 30.5 };
-                        static const double algoYs[]    = { 1.0, 1.0, 1.0, 1.0, 1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0 };
-
-                        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(10, 8));
-                        if (ImPlot::BeginPlot("##policy_timeline_plot", ImVec2(-1, 140), ImPlotFlags_NoTitle | ImPlotFlags_NoBoxSelect)) {
-                            ImPlot::SetupAxes("Fight Time (s)", nullptr, ImPlotAxisFlags_None, ImPlotAxisFlags_None);
-                            ImPlot::SetupAxisLimits(ImAxis_X1, 0.0, 35.0, ImPlotCond_Always);
-                            ImPlot::SetupAxisLimits(ImAxis_Y1, -0.5, 1.5, ImPlotCond_Always);
-                            ImPlot::SetupAxisTicks(ImAxis_Y1, yTicks, 2, yLabels);
-
-                            ImPlotSpec specBase;
-                            specBase.Marker = ImPlotMarker_Square;
-                            specBase.MarkerSize = 5.0f;
-                            specBase.FillColor = ImVec4(0.94f, 0.66f, 0.33f, 0.90f);
-                            specBase.LineColor = ImVec4(1.0f, 0.80f, 0.45f, 1.0f);
-                            ImPlot::PlotScatter("Active APL Moves", baseTimes, baseYs, IM_ARRAYSIZE(baseTimes), specBase);
-
-                            ImPlotSpec specAlgo;
-                            specAlgo.Marker = ImPlotMarker_Circle;
-                            specAlgo.MarkerSize = 5.0f;
-                            specAlgo.FillColor = ImVec4(0.40f, 0.85f, 0.55f, 0.90f);
-                            specAlgo.LineColor = ImVec4(0.60f, 0.95f, 0.75f, 1.0f);
-                            ImPlot::PlotScatter("Learned Moves", algoTimes, algoYs, IM_ARRAYSIZE(algoTimes), specAlgo);
-
-                            ImPlot::EndPlot();
-                        }
-                        ImPlot::PopStyleVar();
-                        ImGui::EndTabItem();
+                if (!policyAnalysis.is_null()) {
+                    const auto& analysis = policyAnalysis;
+                    const double delta = analysis.value("dpsDelta", 0.0);
+                    const auto pairs = analysis.value("completedFightPairs", 0u);
+                    if (ImGui::BeginTable("policy_benchmark_table", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                        ImGui::TableSetupColumn("Controller");
+                        ImGui::TableSetupColumn("Mean whole-fight DPS");
+                        ImGui::TableSetupColumn("Paired delta");
+                        ImGui::TableHeadersRow();
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn(); ImGui::TextUnformatted("APL");
+                        ImGui::TableNextColumn(); ImGui::Text("%.2f", analysis.value("meanBaselineDps", 0.0));
+                        ImGui::TableNextColumn(); ImGui::TextDisabled("Baseline");
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn(); ImGui::TextUnformatted(analysis.value("algorithm", "Policy").c_str());
+                        ImGui::TableNextColumn(); ImGui::Text("%.2f", analysis.value("meanAlgoDps", 0.0));
+                        ImGui::TableNextColumn(); ImGui::Text("%+.2f DPS (%+.1f%%)", delta, analysis.value("dpsDeltaPct", 0.0));
+                        ImGui::EndTable();
                     }
-
-                    if (ImGui::BeginTabItem("DPS vs Time")) {
-                        const int N = 31;
-                        double xs[N], baseDps[N], algoDps[N];
-                        for (int i = 0; i < N; ++i) {
-                            xs[i] = i * 2.0;
-                            baseDps[i] = 480.0 + 80.0 * std::sin(i * 0.35) + (i > 15 ? -35.0 : 25.0);
-                            algoDps[i] = 520.0 + 95.0 * std::sin(i * 0.35 + 0.1) + 25.0;
+                    ImGui::Text("95%% paired interval: [%+.2f, %+.2f] DPS; standard error %.2f", analysis.value("ciLow", 0.0),
+                        analysis.value("ciHigh", 0.0), analysis.value("standardError", 0.0));
+                    ImGui::Text("%u complete fight pairs, seed start %u; %.1f%% of fights improved", pairs, analysis.value("fightIndex", 0u), analysis.value("winRatePct", 0.0));
+                    if (pairs < 30) ImGui::TextWrapped("Small sample: use more fight pairs before concluding that one controller is better.");
+                    if (analysis.contains("timing")) {
+                        const auto& timing = analysis["timing"];
+                        if (analysis.value("inferenceBackend", "") == "batched_gpu_full_fights") {
+                            ImGui::Text("Neural full fights: %llu; dispatches: %llu; %.1f fights/s (startup excluded)",
+                                static_cast<unsigned long long>(timing.value("neuralMeasuredFights", uint64_t(0))),
+                                static_cast<unsigned long long>(timing.value("neuralDispatches", uint64_t(0))),
+                                timing.value("neuralFightsPerSecond", 0.0));
+                            ImGui::Text("Setup %.2fs; training %.2fs", timing.value("setupMs", 0.0) / 1000.0,
+                                timing.value("trainingWallMs", 0.0) / 1000.0);
+                            ImGui::Text("Neural GPU %.3fs; dispatch/transfer %.3fs; batch capacity %u fights",
+                                timing.value("neuralMeasuredGpuMs", 0.0) / 1000.0,
+                                std::max(0.0, timing.value("neuralMeasuredWallMs", 0.0) - timing.value("neuralMeasuredGpuMs", 0.0)) / 1000.0,
+                                timing.value("neuralBatchCapacity", 0u));
                         }
-
-                        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(10, 8));
-                        if (ImPlot::BeginPlot("##dps_vs_time_plot", ImVec2(-1, 150), ImPlotFlags_None)) {
-                            ImPlot::SetupAxes("Time (s)", "DPS", ImPlotAxisFlags_None, ImPlotAxisFlags_None);
-                            ImPlot::SetupAxisLimits(ImAxis_X1, 0.0, 60.0, ImPlotCond_Always);
-                            ImPlot::SetupAxisLimits(ImAxis_Y1, 350.0, 700.0, ImPlotCond_Always);
-
-                            ImPlotSpec baseLine;
-                            baseLine.LineColor = ImVec4(0.94f, 0.66f, 0.33f, 1.0f);
-                            baseLine.LineWeight = 2.0f;
-                            ImPlot::PlotLine("Active APL", xs, baseDps, N, baseLine);
-
-                            ImPlotSpec algoLine;
-                            algoLine.LineColor = ImVec4(0.40f, 0.85f, 0.55f, 1.0f);
-                            algoLine.LineWeight = 2.0f;
-                            ImPlot::PlotLine("Learned Policy", xs, algoDps, N, algoLine);
-
-                            ImPlot::EndPlot();
-                        }
-                        ImPlot::PopStyleVar();
-                        ImGui::EndTabItem();
+                        ImGui::Text("Evaluation wall: %.2fs; search rollouts: %llu; committed decisions: %llu",
+                            timing.value("evaluationWallMs", 0.0) / 1000.0,
+                            static_cast<unsigned long long>(timing.value("searchRolloutFights", uint64_t(0))),
+                            static_cast<unsigned long long>(analysis.value("totalDecisions", uint64_t(0))));
                     }
-
-                    if (ImGui::BeginTabItem("Mana vs Time")) {
-                        const int N = 31;
-                        double xs[N], baseMana[N], algoMana[N];
-                        for (int i = 0; i < N; ++i) {
-                            xs[i] = i * 2.0;
-                            baseMana[i] = std::max(200.0, 4200.0 - (i * 125.0) + ((i % 6 == 0) ? 900.0 : 0.0));
-                            algoMana[i] = std::max(600.0, 4200.0 - (i * 105.0) + ((i % 5 == 0) ? 850.0 : 0.0));
+                    if (analysis.contains("timeline") && ImGui::CollapsingHeader("First controller fight: actual decisions")) {
+                        ImGui::TextWrapped("APL recommendations below are at the controller's states, not moves from a separate baseline fight.");
+                        ImGui::TextWrapped("Highlighted rows differ from the APL: cyan is executed, amber is recommended. A difference does not necessarily mean an improvement.");
+                        if (ImGui::BeginTable("policy_actual_decisions", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(0, 220))) {
+                            ImGui::TableSetupColumn("Time"); ImGui::TableSetupColumn("Mana");
+                            ImGui::TableSetupColumn("Executed action"); ImGui::TableSetupColumn("APL would choose here");
+                            ImGui::TableHeadersRow();
+                            for (const auto& item : analysis["timeline"]) {
+                                // Action zero delegates to the APL rather than overriding it.
+                                const bool differs = item.contains("action") && item.contains("aplAction") &&
+                                    item["action"] != 0 && item["action"] != item["aplAction"];
+                                const auto executed = item.value("actionName", std::string("APL continuation"));
+                                const auto recommended = item.value("aplActionName", std::string("APL continuation"));
+                                ImGui::TableNextRow();
+                                if (differs) ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(255, 185, 65, 24));
+                                ImGui::TableNextColumn(); ImGui::Text("%.2fs", item.value("time", 0.0));
+                                ImGui::TableNextColumn(); ImGui::Text("%.1f", item.value("mana", 0.0));
+                                ImGui::TableNextColumn();
+                                if (differs) ImGui::TextColored(ImVec4(0.35f, 0.85f, 1.0f, 1.0f), "%s (differs)", executed.c_str());
+                                else ImGui::TextUnformatted(executed.c_str());
+                                ImGui::TableNextColumn();
+                                if (differs) ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.30f, 1.0f), "%s", recommended.c_str());
+                                else ImGui::TextUnformatted(recommended.c_str());
+                            }
+                            ImGui::EndTable();
                         }
-
-                        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(10, 8));
-                        if (ImPlot::BeginPlot("##mana_vs_time_plot", ImVec2(-1, 150), ImPlotFlags_None)) {
-                            ImPlot::SetupAxes("Time (s)", "Player Mana", ImPlotAxisFlags_None, ImPlotAxisFlags_None);
-                            ImPlot::SetupAxisLimits(ImAxis_X1, 0.0, 60.0, ImPlotCond_Always);
-                            ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 4500.0, ImPlotCond_Always);
-
-                            ImPlotSpec baseLine;
-                            baseLine.LineColor = ImVec4(0.45f, 0.67f, 0.92f, 1.0f);
-                            baseLine.LineWeight = 2.0f;
-                            ImPlot::PlotLine("Active APL Mana", xs, baseMana, N, baseLine);
-
-                            ImPlotSpec algoLine;
-                            algoLine.LineColor = ImVec4(0.78f, 0.60f, 1.0f, 1.0f);
-                            algoLine.LineWeight = 2.0f;
-                            ImPlot::PlotLine("Learned Policy Mana", xs, algoMana, N, algoLine);
-
-                            ImPlot::EndPlot();
-                        }
-                        ImPlot::PopStyleVar();
-                        ImGui::EndTabItem();
                     }
-                    ImGui::EndTabBar();
-                }
+                } else ImGui::TextDisabled("No complete-fight policy results yet.");
                 ImGui::EndTabItem();
             }
 
@@ -770,7 +844,7 @@ static int gui(Options options) {
         if (pending && !busy) {
             // Finish the one announcement frame BEFORE launching the Vulkan worker.
             glFinish();
-            submittedRequest.presentation = options.computePriority ? "rendering-paused" : "visible-10hz";
+            submittedRequest.presentation = options.computePriority && !(submittedRequest.mode == "policy_benchmark" && submittedRequest.benchmarkAlgo == 1) ? "rendering-paused" : "visible-10hz";
             try {
                 detailedView.clear(); histograms.clear(); histogramCandidate = 0; histogramError.clear();
                 job.start(submittedRequest); reported = false; framesDuringJobs = 0; error.clear();
