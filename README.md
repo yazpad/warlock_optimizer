@@ -1,6 +1,6 @@
-# Fastsim
+# Warlock Optimizer
 
-Fastsim is a fast combat simulator for specialization (spec) analysis. It runs combat workloads on a Vulkan GPU and provides tools to compare builds and action policies, inspect counterfactual decisions, and search for stronger policies. The desktop app supports importing WoWSims profiles, editing a build and action priority list (APL), and running analyses.
+Warlock Optimizer is a fast combat simulator (1.5m sims/sec on rx 5600xt) for specialization (spec) analysis. It runs combat workloads on a Vulkan GPU and provides tools to compare builds and action policies, inspect counterfactual decisions, and search for stronger policies. The desktop app supports importing WoWSims profiles, editing a build and action priority list (APL), and running analyses.
 
 The current implementation focuses on WoW Classic/Forever Warlock. WoWSims import accepts supported local JSON exports; unsupported versions, gear effects, and settings are reported rather than silently approximated. Simulation and search results are analysis tools, not claims of globally optimal play or verified game balance.
 
