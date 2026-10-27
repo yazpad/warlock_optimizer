@@ -1,144 +1,100 @@
 # Fastsim
 
-Native Vulkan combat simulation with a thin Dear ImGui frontend, starting with Warlock. **The ImGui frontend preserves the ~1.56M GPU fights/sec baseline** on RX 5600 XT in compute-priority mode. LÖVE application code, runtime patches, build scripts and generated build dependencies have been removed.
+Fastsim is a fast combat simulator for specialization (spec) analysis. It runs combat workloads on a Vulkan GPU and provides tools to compare builds and action policies, inspect counterfactual decisions, and search for stronger policies. The desktop app supports importing WoWSims profiles, editing a build and action priority list (APL), and running analyses.
 
-The GUI submits immutable jobs to the existing LuaJIT/C/Vulkan worker. The engine owns shaders, wave32, dispatch, readback, completion validation and C aggregation. ImGui receives coarse progress and completed candidate summaries. Rendering pauses during jobs by default; input/cancellation remain active. A persistent in-process C engine library is future work.
+The current implementation focuses on WoW Classic/Forever Warlock. WoWSims import accepts supported local JSON exports; unsupported versions, gear effects, and settings are reported rather than silently approximated. Simulation and search results are analysis tools, not claims of globally optimal play or verified game balance.
 
-## Build and run
+## Build
+
+The native frontend currently targets Linux. On Windows, build and run it in WSL2 with an Ubuntu distribution and a working Vulkan-capable graphics setup; native Windows builds are not supported yet.
+
+### Linux
+
+Install a C++17 compiler, CMake, Ninja, SDL3 3.2+, OpenGL development files, libpng, nlohmann-json 3.10+, Node.js 18+, LuaJIT, a C compiler, Vulkan headers/loader and a Vulkan driver, `glslangValidator`, `spirv-val`, and `sha256sum`. Install these from your distribution packages or the corresponding upstream project packages. Then, from the repository root:
 
 ```sh
 ./tools/build_imgui.sh
 ./tools/run.sh
+```
 
-# Run the fixed native benchmark with ImGui attached, then exit:
-./tools/run.sh --benchmark
+The build creates `artifacts/imgui-build/`; the app writes run outputs under `artifacts/`. To run without opening a window:
 
-# Same worker, no window initialization:
+```sh
 ./tools/run.sh --headless
-
-# Optional live rendering at about 10 Hz; measure this separately:
-./tools/run.sh --benchmark --live-ui
 ```
 
-`tools/run_imgui.sh` is also available directly. Build products and job outputs live under ignored `artifacts/`. Each job gets a fresh output directory containing `native-N.json` and `summary.json`; use `--output-dir PATH` for an explicit new directory. Escape cancels an active job. The window opens the Warlock build editor: reference presets, direct-stat JSON import, talent rank controls, a multiline APL editor with spell icons, and saved drafts. **Simulate** evaluates the edited candidate. **Advanced → Frozen five-build benchmark** retains the historical workload; `--benchmark` and `--headless` without a candidate still select that workload.
+### Windows (WSL2)
 
-Use **Validate & save** to check the APL/talents and save `artifacts/editor/draft.json`; **Copy build** exports the same logical input. Re-run a saved editor build through the same preparation path:
+Install WSL2 with Ubuntu, clone the repository inside the Linux filesystem, install the Linux dependencies listed above, and configure WSLg plus Vulkan GPU support for your Windows GPU driver. In the Ubuntu terminal:
 
 ```sh
-./tools/run.sh --headless --candidate artifacts/editor/draft.json --runs 1
+cd ~/fastsim
+./tools/build_imgui.sh
+./tools/run.sh
 ```
 
-Each edited job saves `candidate.json` and the immutable packed `suite.json` with its native results. Editing, parsing and icon loading stay outside native compute. The fast shader and GPU transport are unchanged; histogram counters run alongside existing C aggregation. The default still renders zero UI frames during jobs.
+Use `./tools/run.sh --headless` to run without the desktop window. The app and Vulkan worker run inside WSL2; the Windows-native toolchain is not currently supported.
 
-The DPS histogram appears automatically after a run and includes **every fight for each build in the last repeat**. Fixed-size counters update during existing C aggregation; there is no extra simulation, raw-report export or GPU readback. Five-build runs have a build selector; hover bars for DPS ranges and fight counts. **Advanced → DPS histogram** or `--no-histogram` disables collection for A/B measurements. Character and talent controls use a smaller 13 px font; APL text stays at the normal size.
+## Workflows
 
-Histogram collection was checked with nine alternating million-fight RX 5600 XT pairs: median native wall time **982.0 ms off / 981.1 ms on**, with all 16 million report words identical and every bin checked against raw DPS. No end-to-end slowdown was measurable; favorable differences are noise, not a speedup claim. The isolated production C aggregation loop added approximately **0.12 ms per million reports** (7.42 → 7.54 ms). [Full evidence](validation/evidence/latest/histogram_paired/summary.json).
+### Import a WoWSims profile and simulate
 
-Import currently accepts the local **Forever/Classic apiVersion 2 JSON** schema and copied editor builds. Unsupported gear, buffs, APL constructs, class/version and encounter settings are rejected; there is no item database, compressed share-link decoder, or general Retail/SoD adapter. Editable presets are fresh reference imports; the historical benchmark stays frozen separately.
-
-Click **Run detailed** to generate damage breakdowns, buff/DoT uptimes and an event timeline using the configured fight/run counts. Damage, DPS, casts, hits/crits/misses, ticks and uptimes are averages across the detailed fights. The timeline is **fight #1 per build**, with player/pet/system lanes, spell/event search, damage filtering and a time-range zoom. It records cast starts, casts, hits, ticks, misses, pet attacks, Life Tap and scheduled events with damage and mana snapshots. Captures are capped at 8,192 records per build; incomplete timelines are explicitly marked truncated. Output is saved in `details-N.json` beside the native results.
-
-Detailed runs use the 163-word report and a separate instrumented replay of the first fight. Tracing is accepted only when every word of that fight's detailed report matches the uninstrumented version. Detailed diagnostics are off in normal **Simulate** runs; neither pinned shader is modified. From the CLI:
+Open the app, drag a supported local WoWSims Classic/Forever JSON export into the import area, review or edit the build and APL, then select **Simulate**. You can also prepare a candidate JSON with the editor and evaluate it from the command line:
 
 ```sh
-./tools/run.sh --headless --detailed --total-fights 1000 --runs 1
+./tools/run.sh --headless --candidate path/to/candidate.json --runs 1
 ```
 
-Linux dependencies: C++17 compiler, CMake/Ninja, Threads, SDL3 >=3.2, OpenGL, libpng, nlohmann-json >=3.10, Node.js >=18 (editor preparation); native compute also needs Lua/LuaJIT, a C compiler, Vulkan headers/loader/driver, `glslangValidator`, `spirv-val` and `sha256sum`. Dear ImGui sources, commit, hashes and MIT license are vendored under `third_party/imgui/`; no network fetch is required by the frontend build. SDL3/OpenGL3 renders only the UI; simulation stays Vulkan. Set `FASTSIM_BUILD_JOBS` to adjust the default four compiler jobs.
+#### Current import limitations
 
-There is no Python source or required command. Node.js 22+ is development tooling for imports, comparisons and benchmark orchestration; the GUI and native job execution do not require Node.js.
+The importer currently accepts **WoWSims/Forever Warlock JSON exports using API version 2**. Other classes and export versions are not supported. Imported builds also have these limits:
 
-## Measured hardware result
+- Prepull actions, item swaps and custom cooldown schedules are rejected.
+- Gear is converted to recognized direct stats; item-specific effects are not generally simulated. Only known gear/enchant stats and a limited trinket effect are mapped. Unknown item IDs may contribute no stats.
+- Armor effects, pets/sacrifices beyond none, Imp or Succubus, and assigned curses beyond Curse of the Elements are unsupported.
+- Encounters support one level-63 target and fixed duration; multiple targets, other levels, variable duration and health-based encounters are unsupported.
+- Only explicitly mapped buffs, debuffs, consumables and bonus stats are accepted. Active unsupported settings, encodings, consumable IDs or stats can cause import rejection.
+- APLs must use supported Warlock actions and conditions. The compiler allows up to 32 rows, at most two `AND` conditions per row, and no `OR`; Drain Soul is not implemented by the current kernel.
 
-Five fixed Warlock builds × 200,000 valid fights, 180-second duration, seed 101, fast reports, shared features, required wave32, heap40, batches of 65,536, two discarded warmups. RX 5600 XT / RADV NAVI10. Five alternating headless/GUI timing pairs passed:
+Simulation summaries and per-run results are saved in a fresh job directory under `artifacts/` (or use `--output-dir PATH`). The app's **Run detailed** action produces damage breakdowns, uptimes, and a first-fight event timeline.
 
-| Median | Native/headless | ImGui attached, rendering paused |
-| --- | ---: | ---: |
-| GPU fights/sec | 1,565,063 | **1,566,647** |
-| Steady evaluation time | 671.069 ms | **668.115 ms** |
-| Native full-run fights/sec | 1,002,581 | 996,948 |
-| Client-process wall time | 1,006.967 ms | 1,011.407 ms |
+### Analyze counterfactual regret
 
-Every raw report word matched across **one million fights / 16 million words** before timing. The UI issued **zero rendering frames during native work**. GPU time ratio was 0.998989 and steady time ratio 0.995598, within the ≤2% GPU-time / ≤5% steady-time overhead gates. Treat the small differences as run-to-run variation, not a speedup claim. Evidence: [archived paired experiment](validation/evidence/latest/rx5600xt_imgui_paired/summary.json).
-
-This establishes the paused-rendering, fixed-workload result on the tested GPU. Continuous live rendering, other devices, diverse policies and cold startup need separate measurements. Historical native full-run timing reached ~1.25M/sec with an earlier orchestrator; it is not the current GUI full-run rate.
-
-## Benchmark commands and timing
+In **Analyze Regret**, choose a build and search budget, then select **Analyze Session Regret**. This compares legal action alternatives at selected decisions in fight #1, continuing with the APL after each choice. It is a local counterfactual diagnostic, not a complete policy score. A small command-line example:
 
 ```sh
-# Raw report replay, then five alternating aggregate-only timing pairs:
-node tools/benchmark_imgui.mjs
-
-# Independent live-rendering comparison:
-node tools/benchmark_imgui.mjs --live-ui
-
-# Standalone native baseline and generic/specialized controls:
-./tools/benchmark_gpu.sh
-./tools/benchmark_wave32.sh --output-dir artifacts/wave32-next
-./tools/benchmark_specialization.sh --output-dir artifacts/specialization-next
+./tools/run.sh --headless --regret --candidate path/to/candidate.json \
+  --regret-decisions 2 --regret-rounds 8 --regret-depth 2 \
+  --regret-samples 4 --regret-validation 8
 ```
 
-Default GUI/headless jobs use three million-fight runs. `--runs`, `--total-fights`, `--batch-size`, `--warmup-batches`, `--generic`, `--no-subgroup-size` and explicit `--raw-reports` support diagnostics. Total fights must be divisible by the five candidates, at least ten. Altered workloads are not directly comparable to the million-fight baseline. Generic currently uses the driver-default subgroup width; generic wave32 is a future native control. Unsupported required wave32 rejects without fallback.
+Regret rows and the analysis summary are saved with the job output. Regrets overlap and should not be summed.
 
-GPU rates use the engine's Vulkan timestamps. Steady evaluation includes measured dispatch/readback plus C aggregation. Native wall time includes job preparation, pipeline setup, warmups and execution; client wall additionally includes worker-process startup/result loading. Window/application startup is outside the per-job timer. Keep these scopes separate.
+### Benchmark policies
 
-The paired harness performs raw replay separately from aggregate-only timings, retains gate results and removes replay binaries afterward. It checks source/input/device/results and zero paused-mode UI frames. At least five hardware pairs are required for `passed-relative-overhead`; software or shorter experiments remain diagnostic-only. A correctness failure rejects speed summaries, and a measured regression exits nonzero. The historical absolute GPU baseline and relative overhead are separate checks.
+The **Policy Benchmark** tab compares a complete-fight controller with the candidate's original APL, using matched evaluation seeds. Choose either **MCTS + PUCT** or **Neuroevolution MLP**, configure the search/training budget, then select **Run Policy Benchmark**. MCTS replans after each committed action; neuroevolution evolves a small neural policy through mutation and selection. These are separate policy methods: neuroevolution does not use MCTS.
 
-## Validation and reference accuracy
+Small CLI examples:
 
 ```sh
-./tools/check.sh
-./tools/doctor.sh
-node tools/check_headless_transport.mjs
+# MCTS + PUCT controller
+./tools/run.sh --headless --policy-benchmark --policy-fights 8 --policy-puct 2
 
-# Small actual software-Vulkan diagnostic, not a hardware speed benchmark:
-./tools/run.sh --headless --allow-software --no-subgroup-size \
-  --total-fights 10 --runs 1 --batch-size 3 --warmup-batches 0
+# Neuroevolution MLP
+./tools/run.sh --headless --policy-benchmark --policy-algorithm neuroevolution \
+  --policy-fights 32 --evolution-generations 64 --evolution-population 16 \
+  --evolution-seed 42
+
+# PPO MLP
+./tools/run.sh --headless --policy-benchmark --policy-algorithm ppo \
+  --policy-fights 32 --ppo-iterations 64 --ppo-rollouts 32 --ppo-lr 0.003 \
+  --evolution-seed 42
 ```
 
-Checks cover Lua syntax/JSON/APL encoding, immutable specialization, parity acceptance rules, corrupt replay rejection, Vulkan shader compilation/SPIR-V validation, C syntax and native worker lifecycle/cancellation/error handling. Worker unit tests use synthetic process results. The separate transport test executes real Vulkan offsets/partial batches/readback. `tools/build_imgui.sh` also runs the C++ tests; offscreen UI diagnostics are described in [native/README.md](native/README.md).
+Use more matched fights and a fresh seed range to evaluate tuned policies. Treat these as experiments: search budgets and seeds affect results, and a benchmark does not establish a globally optimal policy.
 
-The current saved five-case reference comparison remains **diagnostic-only**: **1.0424 DPS MAE**, approximate simultaneous 95% MAE bounds **0–4.1103 DPS**, unresolved input/APL/schema audits and insufficient acceptance precision. Exact optimization/frontend replay does not independently certify Forever accuracy.
+## More information
 
-```sh
-# Recompute the preserved historical comparison:
-node tools/compare_parity.mjs validation/evidence/headless_fast_baseline.json \
-  --suite validation/evidence/headless_fast_frozen_suite.json
-
-# Current native runner at the diagnostic suite's iteration/seed schedule:
-luajit tools/run_native.lua --iterations 1000 --output artifacts/reference-native.json
-node tools/compare_parity.mjs artifacts/reference-native.json
-```
-
-Parity exits 0 for accepted pass, 1 for diagnostic/fail/inconclusive, and 2 for invalid evidence. The million-fight performance schedule differs from the current reference suite; it cannot be submitted as that suite's acceptance evidence. Use native `--raw-output` with `tools/compare_variant.mjs`, `tools/check_headless_replay.mjs` or frontend `--raw-reports` with `tools/compare_imgui.mjs` for exact diagnostics.
-
-Historical native and retired-backend evidence stays immutable under `validation/evidence/`. Generated runs/caches stay in `artifacts/`.
-
-## Many APLs and talents
-
-Shared-feature specialization supports varied candidates: only eligible integer mechanic settings matching across the submitted batch become constants. Differing settings remain per-candidate runtime inputs; stats and APL bytecode always remain runtime data. No candidate is forced to match another. Control-flow optimizations also apply, so shared-constant count alone does not predict speed.
-
-**1,000 APL/talent candidates × 1,000 fights = one million individual fights.** Different actions, decision frequency, divergence and event counts may change throughput. The ~1.56M/sec result covers the frozen five-build batch. Arbitrary candidate submission and a representative diverse-search benchmark remain to be implemented; do not infer their speed from this result.
-
-## Sources and snapshots
-
-- `native/ui/`: thin Dear ImGui window.
-- `native/frontend/`: isolated worker submission/status/cancellation and result validation.
-- `tools/run_native.lua`, `tools/native_support.lua`, `tools/vulkan_probe.c`: native job preparation, content-hash caches and Vulkan/C execution.
-- `sim/classes/warlock/`: specialization, preset data and frozen generated kernels/layouts.
-- `sim/common/`: JSON and packed-word helpers.
-- `policies/apl/`: policy compiler and VM schema.
-- `data/validation/`, `validation/`: diagnostic suite, checks and preserved evidence.
-
-The frozen combat snapshots retain their original source tags to preserve recorded hashes and exact Vulkan compiler inputs. The native wrapper translates those tags directly; no removed runtime is loaded. Future imports emit native GLSL 450. Each invocation owns one fight; local workgroups have 64 threads. Configurations use 229 words, parameters six words, fast reports 16 words and detailed reports 163 words. Invalid completion, overflow and nonfinite reports reject the evaluation.
-
-Regenerate mechanics snapshots deliberately, then regenerate the matching suite and rerun checks/reference validation:
-
-```sh
-node tools/import_warlock.mjs /path/to/yazpads_warlock_sim SOURCE_COMMIT
-node tools/import_reference_suite.mjs /path/to/yazpads_warlock_sim
-node tools/generate_apl_fixtures.mjs /path/to/yazpads_warlock_sim
-./tools/check.sh
-```
-
-[STATUS.md](STATUS.md) records current results, [CHECKLIST.md](CHECKLIST.md) tracks gates, [TODO.md](TODO.md) holds remaining work, and [SESSION_HANDOFF.md](SESSION_HANDOFF.md) is the next-session handoff.
+- [Native frontend details](native/README.md) — controls, options, outputs, and analysis behavior.
+- [STATUS.md](STATUS.md) — current implementation status.
+- [CHECKLIST.md](CHECKLIST.md) and [TODO.md](TODO.md) — validation gates and planned work.

@@ -36,6 +36,7 @@ The controller searches at its actual current decision state, commits only the f
 - [ ] Extend worker recovery/cancellation/failure tests as the persistent API replaces process isolation. Preserve rejection of partial/failed results and unique evidence directories.
 - [x] Initial build editor: text talent ranks, APL text + spell icons, direct-stat Forever JSON import, saved drafts and immutable single-candidate submission shared with CLI.
 - [ ] Extend import adapters to the user's WoWSims export version and equipped gear; keep unsupported settings explicit.
+- [ ] Expand WoWSims import support for the documented limitations in [README.md](README.md): prepull actions, item swaps/custom cooldown schedules, gear effects, Warlock options, encounter shapes, buffs/debuffs/consumables/stats, and APL actions/conditions. Keep rejection diagnostics explicit and avoid silently dropping active settings.
 - [x] Opt-in detailed runs: damage breakdowns, average uptimes and a bounded first-fight event timeline with exact replay checks; preserve the default fast-report path.
 - [ ] Repeat paired hardware performance gates after the editor integration (software replay is diagnostic only).
 

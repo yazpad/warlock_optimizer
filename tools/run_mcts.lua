@@ -10,6 +10,7 @@ local decode = require('sim.common.json_input').decode
 local shader = require('tools.policy_shader')
 local controller = require('tools.policy_controller')
 local neuro = require('tools.neuroevolution')
+local ppo = require('tools.ppo')
 local neuralShader = require('tools.neuro_shader')
 local regret = require('tools.regret')
 local transport = require('tools.regret_transport')
@@ -21,7 +22,7 @@ local started = now()
 local opts = {candidate=0, fights=8, rounds=8, depth=3, batchSize=16, samples=8,
   cPuct=2, aplWeight=0.7, maxDecisions=shader.capacity, evaluationStart=0,
   algorithm='mcts', generations=1024, population=32, mutationSigma=0.1, evolutionSeed=42, work='/tmp/fastsim_mcts_work', output='artifacts/mcts_benchmark.json'}
-local flags = {['--algorithm']='algorithm', ['--generations']='generations', ['--population']='population', ['--mutation-sigma']='mutationSigma', ['--evolution-seed']='evolutionSeed', ['--candidate']='candidate', ['--fights']='fights', ['--rounds']='rounds',
+local flags = {['--algorithm']='algorithm', ['--generations']='generations', ['--population']='population', ['--mutation-sigma']='mutationSigma', ['--ppo-lr']='ppoLr', ['--evolution-seed']='evolutionSeed', ['--candidate']='candidate', ['--fights']='fights', ['--rounds']='rounds',
   ['--depth']='depth', ['--mcts-batch-size']='batchSize', ['--samples']='samples',
   ['--c-puct']='cPuct', ['--apl-weight']='aplWeight', ['--evaluation-start']='evaluationStart',
   ['--work-dir']='work', ['--output']='output', ['--suite']='suite'}
@@ -37,18 +38,31 @@ while i <= #arg do
   elseif not ignoredFlags[name] then error('Unknown argument: '..name) end
   i=i+1
 end
-if opts.algorithm=='neuroevolution' then
-  local explicit=false;for _,v in ipairs(arg) do if v=='--fights' then explicit=true end end
-  if not explicit then opts.fights=2048 end
+if opts.algorithm=='neuroevolution' or opts.algorithm=='ppo' then
+  local explicitFights,explicitGen,explicitPop,explicitSigma=false,false,false,false
+  for _,v in ipairs(arg) do
+    if v=='--fights' then explicitFights=true end
+    if v=='--generations' then explicitGen=true end
+    if v=='--population' then explicitPop=true end
+    if v=='--mutation-sigma' or v=='--ppo-lr' then explicitSigma=true end
+  end
+  if not explicitFights then opts.fights=2048 end
+  if opts.algorithm=='ppo' then
+    if not explicitGen then opts.generations=128 end
+    if not explicitPop then opts.population=64 end
+    if not explicitSigma then opts.mutationSigma=0.003 end
+  end
 end
+if opts.ppoLr then opts.mutationSigma=opts.ppoLr end
 local function bounded(key, lo, hi)
   local value = tonumber(opts[key])
   assert(value and value%1==0 and value>=lo and value<=hi, 'Invalid '..key); opts[key]=value
 end
-assert(opts.algorithm=='mcts' or opts.algorithm=='neuroevolution','Invalid algorithm')
+assert(opts.algorithm=='mcts' or opts.algorithm=='neuroevolution' or opts.algorithm=='ppo','Invalid algorithm')
+local neuralMode=opts.algorithm=='neuroevolution' or opts.algorithm=='ppo'
 bounded('generations',1,16384); bounded('population',2,64); bounded('evolutionSeed',1,2147483646)
 opts.mutationSigma=tonumber(opts.mutationSigma);assert(opts.mutationSigma and opts.mutationSigma>0 and opts.mutationSigma<=2,'Invalid mutation sigma')
-bounded('candidate',0,65535); bounded('fights',2,opts.algorithm=='neuroevolution' and 8192 or 64); bounded('rounds',1,256)
+bounded('candidate',0,65535); bounded('fights',2,neuralMode and 8192 or 64); bounded('rounds',1,256)
 bounded('depth',1,shader.depth); bounded('batchSize',1,64); bounded('samples',2,128)
 opts.validationSamples=math.max(32,opts.samples)
 bounded('evaluationStart',0,65535)
@@ -76,7 +90,6 @@ local function compile(text)
   end
   return path
 end
-local neuralMode=opts.algorithm=='neuroevolution'
 opts.trainingFights=neuralMode and neuro.trainingFights or 0
 local reportWords=neuralMode and neuralShader.words or shader.words
 local policyShader=compile(neuralMode and neuralShader.instrument(source) or shader.instrument(source))
@@ -109,7 +122,8 @@ assert(#references==opts.fights*64,'Incomplete production reference reports')
 local capacity=neuralMode and 32768 or math.max(opts.batchSize*opts.samples,52*opts.validationSamples)
 local activeStride=neuralMode and neuralShader.stride or shader.stride
 local weightOffset=229+capacity*activeStride
-local configWords=weightOffset+(neuralMode and math.max(opts.population,2)*neuro.parameterCount or 0)
+local maxModels=opts.algorithm=='ppo' and 8 or math.max(opts.population,2)
+local configWords=weightOffset+(neuralMode and maxModels*neuro.parameterCount or 0)
 local initialConfigs=ffi.new('uint32_t[?]',configWords,scenario.packed)
 local params=ffi.new('uint32_t[6]',{1,capacity,suite.seed,0,capacity,budget})
 local worker=transport.open(transport.build(opts.work,neuralMode),policyShader,opts.work,neuralMode and 32 or reportWords,capacity,
@@ -182,7 +196,7 @@ function engine:evaluate(history,liveSeed,state,plans,samples,offset)
 end
 -- Whole population x common seeds in a single dispatch, with inference on device.
 if neuralMode then
-  function engine:neuralBatch(models,seeds,capture)
+  function engine:neuralBatch(models,seeds,capture,stochastic)
     local total=#models*#seeds
     assert(total>0,'Empty neural batch')
     local width=capture and reportWords or 32
@@ -194,7 +208,12 @@ if neuralMode then
       local template=ffi.new('uint32_t[?]',activeStride)
       template[0]=weights and 4294967294 or 4294967295
       template[4]=weightOffset+(member-1)*neuro.parameterCount
-      template[1]=4294967295;template[2]=capture and 1 or 0;template[6]=width
+      local invTempBits=0
+      if stochastic then
+        local temp=type(stochastic)=='number' and stochastic or 1.0
+        invTempBits=ffi.cast('uint32_t*',ffi.new('float[1]',temp))[0]
+      end
+      template[1]=4294967295;template[2]=capture and 1 or 0;template[3]=invTempBits;template[6]=width
       if weights then
         assert(#weights==neuro.parameterCount,'Invalid network size')
         for j,w in ipairs(weights) do networkValues[(member-1)*neuro.parameterCount+j-1]=w end
@@ -258,7 +277,12 @@ local neuralStartupWallMs=0
 if neuralMode then
   print('Policy evaluation: preparing neural GPU kernel and original APL threshold');io.stdout:flush()
   local warmupStarted=now()
-  engine.trainingBaseline=engine:neuralBatch({false},neuro.trainingSeeds())[1].mean
+  local baselineBatch=engine:neuralBatch({false},neuro.trainingSeeds())
+  engine.trainingBaseline=baselineBatch[1].mean
+  engine.trainingSeedDps={}
+  for sIdx,fight in ipairs(baselineBatch[1].fights) do
+    engine.trainingSeedDps[neuro.trainingSeeds()[sIdx]]=fight.dps
+  end
   neuralStartupWallMs=(now()-warmupStarted)*1000
 end
 local measuredNeuralWallStart,measuredNeuralFightStart,measuredNeuralGpuStart=neuralWallMs,neuralFights,neuralGpuMs
@@ -294,9 +318,10 @@ local ok,result=xpcall(function()
     end
     print(('Policy evaluation: verified GPU/Lua MLP parity on %d nonzero-network decisions and exact zero-network APL reports'):format(decisions));io.stdout:flush()
   end
-  if opts.algorithm=='neuroevolution' then
+  if opts.algorithm=='neuroevolution' or opts.algorithm=='ppo' then
+    local trainer=opts.algorithm=='ppo' and ppo or neuro
     local trainingStarted=now()
-    weights,trainingCurve,trainingSeeds=neuro.train(engine,opts,function(point)
+    weights,trainingCurve,trainingSeeds=trainer.train(engine,opts,function(point)
       point.elapsedTrainingMs=(now()-trainingStarted)*1000
       print('Neuro training: '..json.encode(point));io.stdout:flush()
     end)
@@ -339,7 +364,8 @@ worker:close(); assert(ok,result)
 result.schemaVersion=2; result.status='complete'; result.mode='policy_benchmark'
 result.evaluationScope='complete_fights'; result.policyType='receding_horizon_mcts'
 if weights then
-  result.policyType='neuroevolution_mlp';result.trainingCurve=trainingCurve;result.trainingSeeds=trainingSeeds
+  result.policyType=opts.algorithm=='ppo' and 'ppo_mlp' or 'neuroevolution_mlp'
+  result.trainingCurve=trainingCurve;result.trainingSeeds=trainingSeeds
   result.inferenceBackend='batched_gpu_full_fights'
   result.network={inputs=neuro.inputs,hidden=neuro.hidden,outputs=neuro.outputs,weights=weights,version=neuro.version,features=neuro.features,aplPrior=neuro.aplPrior,precision='float32'}
 end
@@ -347,11 +373,11 @@ result.actionSelection=weights and 'masked_mlp_argmax' or 'fresh_paired_rollout_
 result.optimalityGuaranteed=false; result.terminalVerified=true
 result.reportReplay='bit-identical'; result.seed=suite.seed; result.fightIndex=opts.evaluationStart
 result.suiteHash=iohelp.hash(suiteSource); result.candidateId=scenario.id; result.duration=scenario.duration
-result.algorithm=weights and 'Neuroevolution MLP' or 'MCTS + PUCT controller'; result.settings=opts; result.results=rows; result.timeline=timeline
+result.algorithm=weights and (opts.algorithm=='ppo' and 'PPO MLP' or 'Neuroevolution MLP') or 'MCTS + PUCT controller'; result.settings=opts; result.results=rows; result.timeline=timeline
 result.timing={setupMs=setupMs,evaluationWallMs=(now()-evaluationStarted)*1000,
   totalWallMs=(now()-started)*1000,searchDispatchWallMs=searchMs,searchRolloutFights=searchFights,
   replayFights=replayFights,dispatches=dispatches,trainingWallMs=trainingWallMs,
-  trainingPolicyFights=weights and (1+opts.generations*(opts.population-1))*neuro.trainingFights or 0,
+  trainingPolicyFights=weights and (opts.algorithm=='ppo' and opts.generations*(opts.population+6*neuro.trainingFights) or (1+opts.generations*(opts.population-1))*neuro.trainingFights) or 0,
   neuralFullFights=neuralFights,neuralDispatches=neuralDispatches,neuralDispatchWallMs=neuralWallMs,
   neuralStartupWallMs=neuralStartupWallMs,
   neuralMeasuredWallMs=neuralWallMs-measuredNeuralWallStart,

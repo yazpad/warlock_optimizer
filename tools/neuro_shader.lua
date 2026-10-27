@@ -40,6 +40,7 @@ uint neuralSelect(uint mask,uint apl){
   for(uint i=0u;i<INPUTSu;i++)v+=neuralWeight(k++)*x[i];
   h[j]=tanh(v);
  }
+ float logits[26];
  float best=-3.402823e38;uint chosen=0u;
  for(uint a=0u;a<26u;a++){
   if((mask&(1u<<a))==0u)continue;
@@ -47,7 +48,26 @@ uint neuralSelect(uint mask,uint apl){
   float v=neuralWeight(k++);
   for(uint j=0u;j<12u;j++)v+=neuralWeight(k++)*h[j];
   v+=a==apl?APL_PRIOR:0.0;
+  logits[a]=v;
   if(v>best){best=v;chosen=a;}
+ }
+ if(control(3u)!=0u&&chosen!=0u){
+  float invTemp=uintBitsToFloat(control(3u));
+  float sumExp=0.0;
+  for(uint a=0u;a<26u;a++){
+   if((mask&(1u<<a))==0u)continue;
+   logits[a]=exp((logits[a]-best)*invTemp);
+   sumExp+=logits[a];
+  }
+  uint hSample=(regretGlobal*1664525u+regretDecisions*1013904223u)^control(7u)*2246822519u;
+  hSample^=hSample>>16u;hSample*=0x7feb352du;hSample^=hSample>>15u;hSample*=0x846ca68bu;hSample^=hSample>>16u;
+  float r=float(hSample>>8u)*(1.0/16777216.0)*sumExp;
+  float acc=0.0;
+  for(uint a=0u;a<26u;a++){
+   if((mask&(1u<<a))==0u)continue;
+   chosen=a;acc+=logits[a];
+   if(r<=acc)break;
+  }
  }
  return chosen;
 }

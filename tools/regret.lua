@@ -3,6 +3,7 @@ local ffi=require('ffi')
 local bit=require('bit')
 local iohelp=require('tools.native_support')
 local M={capacity=1024,depth=4}
+M.detailWords=32+require('sim.classes.warlock.generated.layout').detailedWords
 M.words=32+M.capacity*5
 M.stride=3+M.depth
 local function once(source,anchor,replacement)
@@ -10,8 +11,16 @@ local function once(source,anchor,replacement)
  assert(not source:find(anchor,at+#anchor,true),'Ambiguous regret anchor: '..anchor)
  return source:sub(1,at-1)..replacement..source:sub(at+#anchor)
 end
-function M.instrument(source,compact)
- local reportWords=compact and 32 or M.words
+function M.instrument(source,compact,details)
+ local reportWords=details and M.detailWords or (compact and 32 or M.words)
+ local detailedOutput
+ if details then
+  local first=assert(source:find(" resultData[lane*163u+0u]",1,true))
+  detailedOutput=source:sub(first):match("^(.-)\n}")
+  assert(detailedOutput,"Missing detailed output")
+  source=once(source,detailedOutput,"for(uint word=0u;word<16u;word++) resultData[lane*16u+word]=outputWord(word);")
+  source=once(source,"return mode==1u?stateWord(index):compactWord(index);","return fastWord(index);")
+ end
  local start=assert(source:find('void decide(){',1,true))
  local finish=assert(source:find('\nvoid creditManaRegen',start,true))
  local original=source:sub(start,finish-1)
@@ -122,6 +131,10 @@ void decide(){
  source=once(source,'uint numAplRules;','uint numAplRules;\nfloat regretDoomDamage=0.0;')
  source=once(source,'s.total+=amount;eventDamage+=amount;if(crit)eventFlags|=1u;',
   'if(spell==6u)regretDoomDamage+=amount;s.total+=amount;eventDamage+=amount;if(crit)eventFlags|=1u;')
+ if details then
+  detailedOutput=detailedOutput:gsub('lane%*163u%+(%d+)u',function(word) return 'lane*'..reportWords..'u+'..(32+tonumber(word))..'u' end)
+  source=once(source,'resultData[lane*'..reportWords..'u+25u]=s.now;', 'resultData[lane*'..reportWords..'u+25u]=s.now;\n'..detailedOutput)
+ end
  return source
 end
 M.names={[0]='APL continuation',[1]='Life Tap',[2]='Shadow Bolt (Shadow Trance)',[4]='Soul Fire',[6]='Corruption',[7]='Bane of Doom',[8]='Bane of Agony',[9]='Immolate',[10]='Conflagrate',[11]='Shadowburn',[12]='Incinerate',[13]='Searing Pain',[16]='Shadow Bolt',[17]='Siphon Life',[18]='Wrack',[19]='Hellfire',[25]='Curse of the Elements'}

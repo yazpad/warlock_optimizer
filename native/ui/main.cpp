@@ -1,7 +1,9 @@
+#include <map>
 #include "native_job.h"
 #include "dps_histogram.h"
 #include "editor.h"
 #include "detailed_view.h"
+#include "regret_trace_view.h"
 #include <memory>
 #include "imgui.h"
 #include "implot.h"
@@ -20,6 +22,57 @@
 
 using namespace fastsim;
 namespace fs = std::filesystem;
+// Keep plans readable with the UI's Latin font, including older saved reports.
+static std::string readablePlan(std::string text) {
+    for (size_t at = 0; (at = text.find("→", at)) != std::string::npos; at += 2)
+        text.replace(at, std::string("→").size(), "->");
+    return text;
+}
+
+static void numericMetrics(const nlohmann::json& value, const std::string& path,
+                           std::map<std::string, double>& metrics) {
+    if (value.is_number()) metrics[path] = value.get<double>();
+    else if (value.is_object()) {
+        for (auto it = value.begin(); it != value.end(); ++it)
+            numericMetrics(it.value(), path + "/" + it.key(), metrics);
+    } else if (value.is_array()) {
+        for (size_t i = 0; i < value.size(); ++i) {
+            const auto& item = value[i];
+            const std::string key = item.is_object() ? item.value("name", std::to_string(i)) : std::to_string(i);
+            numericMetrics(item, path + "/" + key, metrics);
+        }
+    }
+}
+
+static std::string regretLogs(const nlohmann::json& analysis) {
+    auto report = analysis;
+    report["exportNotes"] = "All analyzed roots and tested plans are included. Numeric differences are alternative minus taken, using full-fight paired averages. Regrets are not additive. Plans list forced actions, then APL continuation; On-demand traces, when present, include a representative paired timeline and aggregate decision gates.";
+    if (!report.contains("actions"))
+        report["actionCaptureNote"] = "This older report contains analyzed decisions only; rerun to capture the baseline action sequence.";
+    for (auto& row : report.at("rows")) {
+        const nlohmann::json* taken = nullptr;
+        for (const auto& alternative : row.at("alternatives"))
+            if (alternative.at("action") == row.at("takenAction")) taken = &alternative;
+        if (!taken) continue;
+        std::map<std::string, double> baseline;
+        numericMetrics(*taken, "", baseline);
+        auto differences = nlohmann::json::array();
+        for (const auto& alternative : row.at("alternatives")) {
+            std::map<std::string, double> metrics;
+            numericMetrics(alternative, "", metrics);
+            auto values = nlohmann::json::object();
+            for (const auto& [key, value] : baseline) metrics.try_emplace(key, 0.0);
+            for (const auto& [key, value] : metrics) {
+                const double actual = baseline.count(key) ? baseline.at(key) : 0.0;
+                values[key] = {{"taken", actual}, {"alternative", value}, {"difference", value - actual}};
+            }
+            differences.push_back({{"action", alternative.at("action")}, {"metrics", values}});
+        }
+        row["comparisons"] = std::move(differences);
+    }
+    return "Regret analysis for AI review\n" + readablePlan(report.dump(2, ' ', false, nlohmann::json::error_handler_t::replace));
+}
+
 static volatile std::sig_atomic_t interrupted = 0;
 static void interrupt(int signal) { interrupted = signal; }
 struct Options {
@@ -39,22 +92,23 @@ static uint32_t parseNumber(const std::string& text) {
 }
 static Options arguments(int argc, char** argv) {
     Options options; options.request.histogram = true; options.request.root = FASTSIM_SOURCE_DIR;
-    bool explicitPolicyFights = false;
+    bool explicitPolicyFights = false, explicitGen = false, explicitPop = false, explicitSigma = false, explicitRuns = false;
     for (int i = 1; i < argc; ++i) {
         const std::string name = argv[i];
         auto value = [&]() { if (++i >= argc) throw std::runtime_error("Missing " + name); return std::string(argv[i]); };
         if (name == "--regret") { options.request.mode = "regret"; options.request.runs = 1; options.request.histogram = false; }
         else if (name == "--policy-benchmark") { options.request.mode = "policy_benchmark"; options.request.runs = 1; options.request.histogram = false; }
         else if (name == "--policy-algorithm") { const auto algo = value();
-            if (algo != "mcts" && algo != "neuroevolution") throw std::runtime_error("Invalid policy algorithm");
-            options.request.benchmarkAlgo = algo == "neuroevolution" ? 1 : 0; }
-        else if (name == "--evolution-generations") options.request.evolutionGenerations = parseNumber(value());
-        else if (name == "--evolution-population") options.request.evolutionPopulation = parseNumber(value());
+            if (algo != "mcts" && algo != "neuroevolution" && algo != "ppo") throw std::runtime_error("Invalid policy algorithm");
+            options.request.benchmarkAlgo = algo == "ppo" ? 2 : (algo == "neuroevolution" ? 1 : 0); }
+        else if (name == "--evolution-generations" || name == "--ppo-iterations") { options.request.evolutionGenerations = parseNumber(value()); explicitGen = true; }
+        else if (name == "--evolution-population" || name == "--ppo-rollouts") { options.request.evolutionPopulation = parseNumber(value()); explicitPop = true; }
         else if (name == "--evolution-seed") options.request.evolutionSeed = parseNumber(value());
         else if (name == "--policy-fights") { options.request.benchmarkTrials = parseNumber(value()); explicitPolicyFights = true; }
-        else if (name == "--evolution-sigma") { const std::string text = value(); size_t end = 0;
+        else if (name == "--evolution-sigma" || name == "--ppo-lr") { const std::string text = value(); size_t end = 0;
             options.request.evolutionSigma = std::stof(text, &end);
-            if (end != text.size()) throw std::runtime_error("Invalid mutation sigma"); }
+            if (end != text.size()) throw std::runtime_error("Invalid mutation sigma / PPO learning rate");
+            explicitSigma = true; }
         else if (name == "--policy-seed-start") options.request.benchmarkSeedStart = parseNumber(value());
         else if (name == "--policy-puct") { const std::string text = value(); size_t end = 0;
             options.request.benchmarkLearningRate = std::stof(text, &end);
@@ -67,6 +121,10 @@ static Options arguments(int argc, char** argv) {
         else if (name == "--regret-candidate") options.request.regretCandidate = parseNumber(value());
         else if (name == "--detailed") options.request.mode = "detailed";
         else if (name == "--no-histogram") options.request.histogram = false;
+        else if (name == "--regret-trace-request") {
+            std::ifstream file(value()); if (!file) throw std::runtime_error("Cannot read trace request");
+            options.request.regretTraceSource = std::string(std::istreambuf_iterator<char>(file), {});
+        }
         else if (name == "--regret-result") options.regretResult = value();
         else if (name == "--candidate") options.candidate = value();
         else if (name == "--headless") options.headless = true;
@@ -76,7 +134,7 @@ static Options arguments(int argc, char** argv) {
         else if (name == "--generic") { options.request.specialized = false; options.request.wave32 = false; }
         else if (name == "--no-subgroup-size") options.request.wave32 = false;
         else if (name == "--raw-reports") options.request.rawReports = true;
-        else if (name == "--runs") options.request.runs = parseNumber(value());
+        else if (name == "--runs") { options.request.runs = parseNumber(value()); explicitRuns = true; }
         else if (name == "--total-fights") options.request.totalFights = parseNumber(value());
         else if (name == "--batch-size") options.request.batchSize = parseNumber(value());
         else if (name == "--warmup-batches") options.request.warmupBatches = parseNumber(value());
@@ -88,7 +146,7 @@ static Options arguments(int argc, char** argv) {
             std::cout << "Fastsim / thin Dear ImGui frontend\n"
                 "  --policy-benchmark          Complete-fight MCTS controller evaluation\n"
                 "  --policy-fights N --policy-puct X --policy-seed-start N\n"
-                "  --policy-algorithm mcts|neuroevolution --evolution-generations N --evolution-population N --evolution-seed N --evolution-sigma X\n"
+                "  --policy-algorithm mcts|neuroevolution|ppo --evolution-generations N --evolution-population N --evolution-seed N --evolution-sigma X\n"
                 "  --regret                    GPU regret analysis (one separate diagnostic job)\n"
                 "  --regret-result PATH        Inspect a saved regret summary without simulation\n"
                 "  --regret-decisions N --regret-rounds N --regret-samples N --regret-validation N --regret-depth N\n"
@@ -103,7 +161,13 @@ static Options arguments(int argc, char** argv) {
             std::exit(0);
         } else throw std::runtime_error("Unknown option: " + name);
     }
-    if (options.request.benchmarkAlgo == 1 && !explicitPolicyFights) options.request.benchmarkTrials = 2048;
+    if (options.request.benchmarkAlgo >= 1 && !explicitPolicyFights) options.request.benchmarkTrials = 2048;
+    if (options.request.benchmarkAlgo == 2) {
+        if (!explicitGen) options.request.evolutionGenerations = 128;
+        if (!explicitPop) options.request.evolutionPopulation = 64;
+        if (!explicitSigma) options.request.evolutionSigma = 0.003f;
+    }
+    if (!options.headless && !options.benchmark && !explicitRuns) options.request.runs = 1;
     options.request.presentation = options.headless ? "headless" : options.computePriority ? "rendering-paused" : "visible-10hz";
     return options;
 }
@@ -111,7 +175,8 @@ static void printSummary(const JobSnapshot& snapshot) {
     if (snapshot.status == "complete") {
         if (snapshot.summary.value("mode", "") == "regret") {
             const auto& analysis = snapshot.summary.at("analysis");
-            std::cout << "Regret analysis: " << analysis.at("analyzedDecisions") << " decisions; exact baseline replay passed\n";
+            if (analysis.contains("trace")) std::cout << "Decision trace: root " << analysis.at("trace").at("decision") << "; 64 paired futures; exact replay passed\n";
+            else std::cout << "Regret analysis: " << analysis.at("analyzedDecisions") << " decisions; exact baseline replay passed\n";
             std::cout << "Saved " << snapshot.outputDirectory << "/summary.json\n";
             return;
         }
@@ -284,13 +349,18 @@ static int gui(Options options) {
     std::vector<DpsHistogram> histograms;
     DetailedView detailedView;
     int regretFocusFrames = 0;
+    bool regretInspectOpen = false;
+    int regretAlternative = -1;
     int policyFocusFrames = 0;
     nlohmann::json regretAnalysis;
     nlohmann::json policyAnalysis;
     if (!options.regretResult.empty()) {
         std::ifstream input(options.regretResult);
         if (!input) throw std::runtime_error("Cannot open saved regret analysis");
-        auto saved = nlohmann::json::parse(input);
+        std::string contents((std::istreambuf_iterator<char>(input)), {});
+        const auto jsonStart = contents.find('{');
+        if (jsonStart == std::string::npos) throw std::runtime_error("Saved regret file contains no JSON");
+        auto saved = nlohmann::json::parse(contents.substr(jsonStart));
         regretFocusFrames = 2;
         regretAnalysis = saved.contains("analysis") ? saved.at("analysis") : saved;
         if (regretAnalysis.at("mode") != "regret" || !regretAnalysis.at("rows").is_array()) throw std::runtime_error("Invalid saved regret analysis");
@@ -329,7 +399,16 @@ static int gui(Options options) {
                     }
                 } catch (const std::exception& e) { histograms.clear(); histogramError = e.what(); }
             }
-            if (state.status == "complete" && state.summary.at("mode") == "regret") { regretAnalysis = state.summary.at("analysis"); regretFocusFrames = 2; }
+            if (state.status == "complete" && state.summary.at("mode") == "regret") {
+                const auto& result = state.summary.at("analysis");
+                if (result.contains("trace")) {
+                    const auto& trace = result.at("trace");
+                    for (auto& row : regretAnalysis.at("rows")) if (row.at("decision") == trace.at("decision")) {
+                        row["traces"][trace.at("alternativePlan").get<std::string>()] = trace;
+                    }
+                } else regretAnalysis = result;
+                regretFocusFrames = 2;
+            }
             if (state.status == "complete" && state.summary.at("mode") == "policy_benchmark") { policyAnalysis = state.summary.at("analysis"); policyFocusFrames = 2; }
             if (state.status == "complete" && state.summary.at("mode") == "detailed") {
                 try { detailedView.load(state.summary.at("runs").back().at("native").at("details").at("path").get<std::string>()); }
@@ -338,10 +417,10 @@ static int gui(Options options) {
             if (options.benchmark) { done = true; continue; }
         }
         const bool busy = job.running();
-        const bool liveTraining = submittedRequest.mode == "policy_benchmark" && submittedRequest.benchmarkAlgo == 1;
+        const bool liveTraining = submittedRequest.mode == "policy_benchmark" && submittedRequest.benchmarkAlgo >= 1;
         const bool paused = job.running() && options.computePriority && !liveTraining;
         if (paused) {
-            const std::string title = (submittedRequest.mode == "regret" || submittedRequest.mode == "policy_benchmark") ? "WoW Forever Optimizer / " + state.phase + " / Esc to cancel" : "WoW Forever Optimizer / Computing / Run " + std::to_string(state.run) + " / " + std::to_string(state.completedFights) + " fights / Esc to cancel";
+            const std::string title = (submittedRequest.mode == "regret" || submittedRequest.mode == "policy_benchmark") ? "WoW Forever Optimizer / " + state.phase + " / Esc to cancel" : "WoW Forever Optimizer / Computing / Run " + std::to_string(state.run) + "/" + std::to_string(submittedRequest.runs) + " / " + std::to_string(state.completedFights) + "/" + std::to_string(state.totalFights) + " fights / Esc to cancel";
             SDL_SetWindowTitle(window, title.c_str());
             SDL_Delay(50); continue; // No renderer frame, swap, or GPU work while native job runs.
         }
@@ -351,21 +430,46 @@ static int gui(Options options) {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->WorkPos); ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::Begin("Native compute", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+        const ImVec2 headerStart = ImGui::GetCursorScreenPos();
         ImGui::TextColored(ImVec4(0.85f, 0.65f, 1.0f, 1.0f), "WOW FOREVER OPTIMIZER");
         ImGui::SameLine();
         ImGui::TextDisabled("| Warlock DPS Simulation & APL Studio");
-        ImGui::Separator();
-
-        // Top-level progress bar and status when running
-        if (busy || pending || state.status == "complete" || !error.empty() || !state.error.empty()) {
-            if (pending && !job.running()) ImGui::TextDisabled("Running / Escape to cancel");
-            const float progress = state.totalFights ? std::min(1.0f, (static_cast<float>(state.run ? state.run - 1 : 0) + static_cast<float>(state.completedFights) / state.totalFights) / submittedRequest.runs) : 0;
-            ImGui::ProgressBar(state.status == "complete" ? 1.0f : progress, ImVec2(-1, 0));
-            ImGui::TextDisabled("Status: %s", state.status.c_str());
-            if (!error.empty()) ImGui::TextColored(ImVec4(0.95f, 0.40f, 0.40f, 1.0f), "%s", error.c_str());
-            if (!state.error.empty()) ImGui::TextColored(ImVec4(0.95f, 0.40f, 0.40f, 1.0f), "%s", state.error.c_str());
-            ImGui::Separator();
+        const bool showHeaderStatus = busy || pending || state.status == "complete" || !error.empty() || !state.error.empty();
+        if (showHeaderStatus) {
+            char status[160];
+            if (busy && state.totalFights) {
+                std::snprintf(status, sizeof(status), "Run %u/%u | %u/%u fights", state.run, submittedRequest.runs, state.completedFights, state.totalFights);
+            } else if (pending) {
+                std::snprintf(status, sizeof(status), "Starting simulation...");
+            } else if (!error.empty() || !state.error.empty()) {
+                std::snprintf(status, sizeof(status), "Simulation error");
+            } else {
+                std::snprintf(status, sizeof(status), "Last run complete");
+            }
+            const float progress = state.totalFights && submittedRequest.runs
+                ? std::clamp((static_cast<float>(state.run ? state.run - 1 : 0) + static_cast<float>(state.completedFights) / state.totalFights) / submittedRequest.runs, 0.0f, 1.0f)
+                : 0.0f;
+            const float progressWidth = busy ? 130.0f : 0.0f;
+            const float statusWidth = ImGui::CalcTextSize(status).x;
+            const float groupWidth = statusWidth + (busy ? progressWidth + ImGui::GetStyle().ItemSpacing.x : 0.0f);
+            const float rightEdge = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+            const float statusX = rightEdge - groupWidth;
+            ImDrawList* headerDraw = ImGui::GetWindowDrawList();
+            headerDraw->AddText(ImVec2(statusX, headerStart.y), ImGui::GetColorU32(ImGuiCol_TextDisabled), status);
+            if (busy) {
+                const float barX = statusX + statusWidth + ImGui::GetStyle().ItemSpacing.x;
+                const float barY = headerStart.y + (ImGui::GetTextLineHeight() - 8.0f) * 0.5f;
+                const ImVec2 barMin(barX, barY);
+                const ImVec2 barMax(barX + progressWidth, barY + 8.0f);
+                headerDraw->AddRectFilled(barMin, barMax, ImGui::GetColorU32(ImGuiCol_FrameBg), 4.0f);
+                if (progress > 0.0f) {
+                    headerDraw->AddRectFilled(barMin, ImVec2(barX + progressWidth * progress, barMax.y), ImGui::GetColorU32(ImGuiCol_PlotHistogram), 4.0f);
+                }
+            }
         }
+        ImGui::Separator();
+        if (!error.empty()) ImGui::TextColored(ImVec4(0.95f, 0.40f, 0.40f, 1.0f), "%s", error.c_str());
+        if (!state.error.empty()) ImGui::TextColored(ImVec4(0.95f, 0.40f, 0.40f, 1.0f), "%s", state.error.c_str());
 
         const float totalAvailWidth = ImGui::GetContentRegionAvail().x;
         const float paneSpacing = ImGui::GetStyle().ItemSpacing.x;
@@ -420,11 +524,21 @@ static int gui(Options options) {
                         overallFights >= 1000000 ? (std::to_string(overallFights / 1000000) + "M").c_str() : std::to_string(overallFights).c_str());
                 }
                 if (ImGui::CollapsingHeader("Advanced Settings")) {
-                    ImGui::Checkbox("Frozen five-build benchmark", &frozenBenchmark);
+                    auto settingHelp = [](const char* text) {
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                        ImGui::TextWrapped("%s", text);
+                        ImGui::PopStyleColor();
+                    };
                     ImGui::Checkbox("DPS histogram", &options.request.histogram);
+                    settingHelp("Collect per-fight DPS and show its distribution.");
                     if (ImGui::Checkbox("Specialization", &options.request.specialized) && !options.request.specialized) options.request.wave32 = false;
-                    ImGui::BeginDisabled(!options.request.specialized); ImGui::Checkbox("Wave32", &options.request.wave32); ImGui::EndDisabled();
+                    settingHelp("Tailor the shader to this build, which can make simulation faster.");
+                    ImGui::BeginDisabled(!options.request.specialized);
+                    ImGui::Checkbox("Wave32", &options.request.wave32);
+                    settingHelp("Request 32-lane GPU groups; requires compatible hardware and Specialization.");
+                    ImGui::EndDisabled();
                     ImGui::Checkbox("Pause UI during compute", &options.computePriority);
+                    settingHelp("Pause UI redraws while the GPU simulation runs to prioritize compute.");
                 }
                 const bool fastClicked = ImGui::Button("Simulate", ImVec2(150, 0));
                 ImGui::SameLine(); const bool detailedClicked = ImGui::Button("Run detailed");
@@ -510,13 +624,56 @@ static int gui(Options options) {
                         else { editor->submit(request); request.regretCandidate = 0; }
                         request.mode = "regret"; request.runs = 1; request.rawReports = false;
                         submittedRequest = std::move(request);
-                        selectedRegretAction = 0; pending = true; error.clear();
+                        selectedRegretAction = 0; regretInspectOpen = false; pending = true; error.clear();
                     } catch (const std::exception& e) { error = e.what(); }
                 }
                 ImGui::EndDisabled();
                 if (!regretAnalysis.is_null()) {
                     const auto& analysis = regretAnalysis;
                     const auto& rows = analysis.at("rows");
+                    static double logsCopiedUntil = 0.0;
+                    auto copyLogs = [&]() { const auto logs = regretLogs(analysis); ImGui::SetClipboardText(logs.c_str()); logsCopiedUntil = ImGui::GetTime() + 3.0; };
+                    static char logSavePath[4096] = {};
+                    static std::string logSaveStatus, logSaveError;
+                    auto exportControls = [&]() {
+                        if (ImGui::Button("Save logs to file...")) {
+                            fs::path directory = !options.regretResult.empty() ? options.regretResult.parent_path() : fs::path(state.outputDirectory);
+                            if (directory.empty()) directory = fs::current_path();
+                            const auto stamp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                            const auto path = fs::absolute(directory / ("regret-analysis-" + std::to_string(stamp) + ".txt")).string();
+                            std::snprintf(logSavePath, sizeof(logSavePath), "%s", path.c_str());
+                            logSaveError.clear();
+                            ImGui::OpenPopup("Save regret logs");
+                        }
+                        if (ImGui::BeginPopupModal("Save regret logs", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                            ImGui::TextUnformatted("Save all decisions, actions and differences for AI analysis.");
+                            ImGui::SetNextItemWidth(650);
+                            ImGui::InputText("File path", logSavePath, sizeof(logSavePath));
+                            if (ImGui::Button("Save")) {
+                                try {
+                                    if (!logSavePath[0]) throw std::runtime_error("Enter a file path.");
+                                    if (fs::exists(logSavePath)) throw std::runtime_error("File already exists. Choose a new filename.");
+                                    const auto logs = regretLogs(analysis);
+                                    std::ofstream output(logSavePath, std::ios::binary);
+                                    if (!output) throw std::runtime_error("Cannot open the file for writing.");
+                                    output << logs << '\n';
+                                    output.close();
+                                    if (!output) throw std::runtime_error("Failed to write the complete log file.");
+                                    logSaveStatus = "Saved logs: " + std::string(logSavePath);
+                                    ImGui::CloseCurrentPopup();
+                                } catch (const std::exception& e) { logSaveError = e.what(); }
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+                            if (!logSaveError.empty()) ImGui::TextWrapped("%s", logSaveError.c_str());
+                            ImGui::EndPopup();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Copy logs")) copyLogs();
+                        if (ImGui::GetTime() < logsCopiedUntil) { ImGui::SameLine(); ImGui::TextDisabled("Logs copied"); }
+                        if (!logSaveStatus.empty()) ImGui::TextWrapped("%s", logSaveStatus.c_str());
+                    };
+                    exportControls();
                     ImGui::Spacing();
                     ImGui::TextWrapped("%s", analysis.value("continuation", "Searched prefix then APL to terminal").c_str());
                     ImGui::Text("%s | Seed %u | %.1f DPS recorded | Baseline replay: exact",
@@ -526,13 +683,13 @@ static int gui(Options options) {
                     if (analysis.contains("rolloutFights")) ImGui::TextDisabled("%u rollouts in %u GPU batches; every rollout verified at fight end",
                         analysis.at("rolloutFights").get<uint32_t>(), analysis.at("rolloutDispatches").get<uint32_t>());
                     if (analysis.at("truncated").get<bool>()) ImGui::TextWrapped("Decision capture reached its limit; later decisions were omitted.");
-                    ImGui::TextWrapped("Each rollout runs to the fight end. Red (+X.XX) indicates missed DPS vs best alternative. Green (-Y.YY) indicates the taken action was optimal, showing its lead over the runner-up alternative.");
+                    ImGui::TextWrapped("Each rollout runs to the fight end. Red (+X.XX) indicates missed DPS vs best alternative. Green (-Y.YY) indicates the taken action had the highest sample mean, showing its lead over the runner-up alternative.");
                     if (rows.empty()) ImGui::TextDisabled("No decisions with multiple supported legal actions in this fight.");
                     if (ImGui::BeginTable("regret_table", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
                         ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 60.0f);
                         ImGui::TableSetupColumn("Taken", ImGuiTableColumnFlags_WidthStretch);
                         ImGui::TableSetupColumn("Best Alternative", ImGuiTableColumnFlags_WidthStretch);
-                        ImGui::TableSetupColumn("\xCE\x94 DPS (95% CI)", ImGuiTableColumnFlags_WidthStretch);
+                        ImGui::TableSetupColumn("DPS difference (95% CI)", ImGuiTableColumnFlags_WidthStretch);
                         ImGui::TableSetupColumn("Inspect", ImGuiTableColumnFlags_WidthFixed, 64.0f);
                         ImGui::TableHeadersRow();
                         for (size_t i = 0; i < rows.size(); ++i) {
@@ -567,7 +724,7 @@ static int gui(Options options) {
                             if (isOptimal) {
                                 ImGui::Text("%s", taken.c_str());
                                 ImGui::SameLine();
-                                ImGui::TextDisabled("(optimal)");
+                                ImGui::TextDisabled("(highest estimate)");
                             } else {
                                 ImGui::Text("%s", taken.c_str());
                             }
@@ -590,7 +747,7 @@ static int gui(Options options) {
                                     ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "0.00 DPS");
                                 }
                                 ImGui::SameLine();
-                                ImGui::TextDisabled("[%.1f, %.1f]", ciLow, ciHigh);
+                                ImGui::TextDisabled("(runner-up CI unavailable)");
                             } else {
                                 ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f), "+%.2f DPS", delta);
                                 ImGui::SameLine();
@@ -599,41 +756,182 @@ static int gui(Options options) {
 
                             // 5. Inspect button
                             ImGui::TableNextColumn();
-                            if (ImGui::SmallButton("Inspect")) selectedRegretAction = static_cast<int>(i);
+                            if (ImGui::SmallButton("Inspect")) {
+                                selectedRegretAction = static_cast<int>(i);
+                                regretInspectOpen = true;
+                                regretAlternative = -1;
+                            }
                             ImGui::PopID();
                         }
                         ImGui::EndTable();
                     }
-                    if (selectedRegretAction >= 0 && static_cast<size_t>(selectedRegretAction) < rows.size()) {
+                    if (regretInspectOpen && selectedRegretAction >= 0 && static_cast<size_t>(selectedRegretAction) < rows.size()) {
+                        ImGui::SetNextWindowSize(ImVec2(980, 750), ImGuiCond_FirstUseEver);
+                        const bool visible = ImGui::Begin("Decision inspection", &regretInspectOpen);
+                        if (visible) {
+                        exportControls();
+                        auto differenceColor = [](double value) {
+                            if (value > 0.0) return ImVec4(0.40f, 0.85f, 0.55f, 1.0f);
+                            if (value < 0.0) return ImVec4(0.95f, 0.45f, 0.45f, 1.0f);
+                            return ImGui::GetStyleColorVec4(ImGuiCol_Text);
+                        };
                         const auto& row = rows[selectedRegretAction];
                         const std::string taken = row.at("takenAction").get<std::string>();
                         const std::string best = row.at("bestAction").get<std::string>();
                         const double delta = row.at("dpsDelta").get<double>();
                         const bool isOptimal = (delta <= 0.001 && taken == best);
 
-                        ImGui::SeparatorText("Decision inspection");
+                        ImGui::Text("Decision %u at %.2fs", row.at("decision").get<unsigned>(), row.at("time").get<double>());
                         ImGui::Text("Mana: %.0f | Shadow Trance: %s | %u paired future samples", row.at("mana").get<double>(),
                             row.at("shadowTrance").get<bool>() ? "active" : "inactive", row.at("samples").get<uint32_t>());
 
                         if (isOptimal) {
-                            ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "Action taken (%s) had the highest estimated DPS among tested alternatives.", taken.c_str());
+                            ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "%s: highest estimate.", taken.c_str());
                         } else {
-                            ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f), "Suboptimal action taken (%s): missing +%.2f DPS vs %s",
+                            ImGui::TextColored(differenceColor(delta), "Taken action (%s): estimated +%.2f DPS available with %s",
                                 taken.c_str(), delta, best.c_str());
                         }
-                        ImGui::TextWrapped("Best plan: %s", row.at("plan").get<std::string>().c_str());
-                        ImGui::TextWrapped("Taken-action comparison: %s", row.at("takenPlan").get<std::string>().c_str());
+                        ImGui::TextWrapped("Best plan: %s", readablePlan(row.at("plan").get<std::string>()).c_str());
+                        ImGui::TextWrapped("Taken plan: %s", readablePlan(row.at("takenPlan").get<std::string>()).c_str());
+                        const auto& alternatives = row.at("alternatives");
+                        int takenIndex = -1;
+                        for (size_t a = 0; a < alternatives.size(); ++a) {
+                            if (alternatives[a].at("action") == taken) takenIndex = static_cast<int>(a);
+                        }
+                        if (regretAlternative < 0 || static_cast<size_t>(regretAlternative) >= alternatives.size()) {
+                            regretAlternative = 0;
+                            if (takenIndex == 0 && alternatives.size() > 1) regretAlternative = 1;
+                        }
+                        if (takenIndex >= 0 && !alternatives.empty()) {
+                            if (ImGui::BeginCombo("Compare alternative", alternatives[regretAlternative].at("action").get<std::string>().c_str())) {
+                                for (size_t a = 0; a < alternatives.size(); ++a) {
+                                    if (ImGui::Selectable(alternatives[a].at("action").get<std::string>().c_str(), regretAlternative == static_cast<int>(a))) regretAlternative = static_cast<int>(a);
+                                }
+                                ImGui::EndCombo();
+                            }
+                            const auto& actual = alternatives[takenIndex];
+                            const auto& other = alternatives[regretAlternative];
+                            ImGui::TextWrapped("Alternative plan: %s", readablePlan(other.at("plan").get<std::string>()).c_str());
+                            ImGui::Text("Taken %.2f DPS | Alternative %.2f DPS |",
+                                actual.at("meanDps").get<double>(), other.at("meanDps").get<double>());
+                            ImGui::SameLine();
+                            const double difference = other.at("meanDps").get<double>() - actual.at("meanDps").get<double>();
+                            ImGui::TextColored(differenceColor(difference), "Difference %+.2f DPS", difference);
+                            ImGui::TextWrapped("Full-fight averages. Differences = alternative minus taken.");
+                            ImGui::BeginDisabled(busy || pending || regretAlternative == takenIndex);
+                            if (ImGui::Button("Trace why")) {
+                                try {
+                                    submittedRequest = regretTraceRequest(options.request, analysis, row, other);
+                                    pending = true; error.clear();
+                                } catch (const std::exception& e) { error = e.what(); }
+                            }
+                            ImGui::EndDisabled();
+                            ImGui::SameLine(); ImGui::TextDisabled("64 fresh pairs; on demand.");
+                            const auto traceKey = other.at("plan").get<std::string>();
+                            if (row.contains("traces") && row.at("traces").contains(traceKey)) drawRegretTrace(row.at("traces").at(traceKey));
+                            if (actual.contains("detail") && other.contains("detail")) {
+                                const auto& left = actual.at("detail");
+                                const auto& right = other.at("detail");
+                                ImGui::SeparatorText("Damage changes");
+                                // The saved interval belongs only to the best-versus-taken pair.
+                                if (regretAlternative == takenIndex) {
+                                    ImGui::TextWrapped("Same plan.");
+                                } else if (other.at("action") == best && best != taken) {
+                                    const double low = row.at("ciLow").get<double>();
+                                    const double high = row.at("ciHigh").get<double>();
+                                    ImGui::TextWrapped("%s Approximate 95%% interval: %+.2f to %+.2f DPS.",
+                                        low > 0 ? "Alternative favored." :
+                                        high < 0 ? "Taken favored." :
+                                        "No clear winner.", low, high);
+                                    ImGui::TextDisabled("Interval does not adjust for selecting among multiple alternatives.");
+                                } else {
+                                    ImGui::TextWrapped("No paired interval saved for this comparison.");
+                                }
+                                const double duration = analysis.value("duration", 0.0);
+                                if (duration > 0) ImGui::Text("Net: %+.1f damage over %.1fs (%+.3f DPS)", difference * duration, duration, difference);
+                                struct Driver { std::string name; double dps = 0, casts = 0, ticks = 0; };
+                                std::map<std::string, Driver> bySpell;
+                                for (const auto* detail : {&left, &right}) {
+                                    const double sign = detail == &left ? -1.0 : 1.0;
+                                    for (const auto& spell : detail->at("damage")) {
+                                        const auto name = spell.at("name").get<std::string>();
+                                        auto& driver = bySpell[name]; driver.name = name;
+                                        driver.dps += sign * spell.value("dps", 0.0);
+                                        driver.casts += sign * spell.value("casts", 0.0);
+                                        driver.ticks += sign * spell.value("ticks", 0.0);
+                                    }
+                                }
+                                std::vector<Driver> drivers;
+                                double accounted = 0, shown = 0;
+                                for (const auto& [name, driver] : bySpell) { drivers.push_back(driver); accounted += driver.dps; }
+                                std::sort(drivers.begin(), drivers.end(), [](const Driver& a, const Driver& b) { return std::abs(a.dps) > std::abs(b.dps); });
+                                ImGui::TextWrapped("Largest changes with %s:", other.at("action").get<std::string>().c_str());
+                                for (size_t i = 0; i < std::min<size_t>(4, drivers.size()); ++i) {
+                                    const auto& driver = drivers[i]; shown += driver.dps;
+                                    ImGui::TextColored(differenceColor(driver.dps), "%+.3f DPS: %s", driver.dps, driver.name.c_str());
+                                    ImGui::SameLine();
+                                    ImGui::Text("(%+.2f casts, %+.2f ticks)", driver.casts, driver.ticks);
+                                }
+                                ImGui::Text("Other spells: %+.3f DPS | Accounting residual: %+.3f DPS", accounted - shown, difference - accounted);
+                                if (left.contains("mana") && right.contains("mana")) {
+                                    ImGui::Text("Rotation cost: %+.2f Life Taps, %+.1f mana spent",
+                                        right.at("mana").value("taps", 0.0) - left.at("mana").value("taps", 0.0),
+                                        right.at("mana").value("spent", 0.0) - left.at("mana").value("spent", 0.0));
+                                }
+                                ImGui::TextWrapped("Changes include the continuation. Counts are averages.");
+                                auto beginComparison = [](const char* id) {
+                                    if (!ImGui::BeginTable(id, 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) return false;
+                                    for (const char* label : {"Metric", "Taken", "Alternative", "Difference"}) ImGui::TableSetupColumn(label);
+                                    ImGui::TableHeadersRow(); return true;
+                                };
+                                auto metric = [&](const char* label, double a, double b) {
+                                    ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextUnformatted(label);
+                                    ImGui::TableNextColumn(); ImGui::Text("%.3f", a);
+                                    ImGui::TableNextColumn(); ImGui::Text("%.3f", b);
+                                    ImGui::TableNextColumn(); ImGui::TextColored(differenceColor(b-a), "%+.3f", b-a);
+                                };
+                                ImGui::SeparatorText("Spell and pet breakdown");
+                                static int selectedMetric = 0;
+                                const char* keys[] = {"damage", "dps", "casts", "hits", "crits", "misses", "ticks"};
+                                ImGui::Combo("Measure", &selectedMetric, "Damage\0DPS\0Casts\0Hits\0Crits\0Misses\0Ticks\0");
+                                if (beginComparison("spell_comparison")) {
+                                    std::map<std::string, std::pair<double, double>> values;
+                                    for (const auto& spell : left.at("damage")) values[spell.at("name").get<std::string>()].first = spell.value(keys[selectedMetric], 0.0);
+                                    for (const auto& spell : right.at("damage")) values[spell.at("name").get<std::string>()].second = spell.value(keys[selectedMetric], 0.0);
+                                    for (const auto& [name, value] : values) metric(name.c_str(), value.first, value.second);
+                                    ImGui::EndTable();
+                                }
+                                ImGui::SeparatorText("Effect uptimes");
+                                if (beginComparison("uptime_comparison")) {
+                                    for (size_t e = 0; e < left.at("uptimes").size(); ++e) {
+                                        const auto& a = left.at("uptimes")[e]; const auto& b = right.at("uptimes")[e];
+                                        const auto name = a.at("name").get<std::string>();
+                                        metric((name + " (seconds)").c_str(), a.at("seconds").get<double>(), b.at("seconds").get<double>());
+                                        metric((name + " (%)").c_str(), 100*a.at("fraction").get<double>(), 100*b.at("fraction").get<double>());
+                                    }
+                                    ImGui::EndTable();
+                                }
+                                ImGui::SeparatorText("Mana and Life Taps");
+                                if (beginComparison("mana_comparison")) {
+                                    for (const char* key : {"spent", "gained", "wasted", "remaining", "taps"}) metric(key, left.at("mana").at(key).get<double>(), right.at("mana").at(key).get<double>());
+                                    ImGui::EndTable();
+                                }
+                            } else ImGui::TextWrapped("This saved analysis predates detailed comparisons. Run Analyze Session Regret again to collect casts, damage, uptimes and mana.");
+                        }
+                        ImGui::SeparatorText("All tested plans");
                         for (const auto& alternative : row.at("alternatives")) {
                             const std::string altAct = alternative.at("action").get<std::string>();
                             const double altDps = alternative.at("meanDps").get<double>();
                             if (altAct == taken && isOptimal) {
-                                ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "%.2f DPS: %s [Optimal choice]", altDps, alternative.at("plan").get<std::string>().c_str());
+                                ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.55f, 1.0f), "%.2f DPS: %s [Highest estimate]", altDps, readablePlan(alternative.at("plan").get<std::string>()).c_str());
                             } else {
-                                ImGui::TextWrapped("%.2f expected fight DPS: %s", altDps, alternative.at("plan").get<std::string>().c_str());
+                                ImGui::TextWrapped("%.2f expected fight DPS: %s", altDps, readablePlan(alternative.at("plan").get<std::string>()).c_str());
                             }
                             if (alternative.contains("doomDamage") && altAct == "Bane of Doom")
                                 ImGui::TextDisabled("  Includes %.0f average Doom damage over the full fight", alternative.at("doomDamage").get<double>());
                         }
+                        }
+                        ImGui::End();
                     }
                 }
                 ImGui::EndTabItem();
@@ -646,23 +944,26 @@ static int gui(Options options) {
                 --policyFocusFrames;
             }
             if (ImGui::BeginTabItem("Policy Benchmark", nullptr, policyTabFlags)) {
-                ImGui::TextWrapped("Compare complete policies against the original APL on matched evaluation seeds. Neuroevolution trains a small MLP by mutation and selection, with no MCTS.");
-                const char* algos[] = {"MCTS + PUCT controller", "Neuroevolution MLP"};
+                ImGui::TextWrapped("Compare complete policies against the original APL on matched evaluation seeds. Neuroevolution and PPO train a small MLP with no MCTS.");
+                const char* algos[] = {"MCTS + PUCT controller", "Neuroevolution MLP", "PPO MLP"};
                 ImGui::SetNextItemWidth(230);
-                if (ImGui::Combo("Algorithm", &policyAlgo, algos, IM_ARRAYSIZE(algos)))
-                    benchmarkTrials = policyAlgo == 1 ? 2048 : 8;
+                if (ImGui::Combo("Algorithm", &policyAlgo, algos, IM_ARRAYSIZE(algos))) {
+                    benchmarkTrials = policyAlgo >= 1 ? 2048 : 8;
+                    if (policyAlgo == 2) { evolutionGenerations = 128; evolutionPopulation = 64; evolutionSigma = 0.003f; }
+                    else if (policyAlgo == 1) { evolutionGenerations = 1024; evolutionPopulation = 32; evolutionSigma = 0.1f; }
+                }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(110);
                 ImGui::InputInt("Fight pairs", &benchmarkTrials, 1, 4);
-                benchmarkTrials = std::clamp(benchmarkTrials, 2, policyAlgo == 1 ? 8192 : 64);
+                benchmarkTrials = std::clamp(benchmarkTrials, 2, policyAlgo >= 1 ? 8192 : 64);
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(110);
                 if (policyAlgo == 0) ImGui::InputFloat("PUCT weight", &learningRate, 0.1f, 0.5f, "%.2f");
-                if (policyAlgo == 1) {
-                    ImGui::InputInt("Generations", &evolutionGenerations); evolutionGenerations = std::clamp(evolutionGenerations, 1, 16384);
-                    ImGui::InputInt("Population", &evolutionPopulation); evolutionPopulation = std::clamp(evolutionPopulation, 2, 64);
-                    ImGui::InputFloat("Mutation sigma", &evolutionSigma, 0.01f, 0.1f); evolutionSigma = std::clamp(evolutionSigma, 0.001f, 2.0f);
-                    ImGui::InputInt("Evolution seed", &evolutionSeed); evolutionSeed = std::clamp(evolutionSeed, 1, 2147483646);
+                if (policyAlgo >= 1) {
+                    ImGui::InputInt(policyAlgo == 2 ? "PPO iterations" : "Generations", &evolutionGenerations); evolutionGenerations = std::clamp(evolutionGenerations, 1, 16384);
+                    ImGui::InputInt(policyAlgo == 2 ? "Rollout fights" : "Population", &evolutionPopulation); evolutionPopulation = std::clamp(evolutionPopulation, 2, 64);
+                    ImGui::InputFloat(policyAlgo == 2 ? "Learning rate" : "Mutation sigma", &evolutionSigma, 0.001f, 0.05f, "%.4f"); evolutionSigma = std::clamp(evolutionSigma, 0.0001f, 2.0f);
+                    ImGui::InputInt(policyAlgo == 2 ? "Training seed" : "Evolution seed", &evolutionSeed); evolutionSeed = std::clamp(evolutionSeed, 1, 2147483646);
                 }
                 ImGui::SetNextItemWidth(110);
                 ImGui::InputInt("Evaluation seed start", &policySeedStart, 64, 128);
@@ -790,12 +1091,14 @@ static int gui(Options options) {
                             static_cast<unsigned long long>(timing.value("searchRolloutFights", uint64_t(0))),
                             static_cast<unsigned long long>(analysis.value("totalDecisions", uint64_t(0))));
                     }
-                    if (analysis.contains("timeline") && ImGui::CollapsingHeader("First controller fight: actual decisions")) {
+                    if (analysis.contains("timeline") && ImGui::CollapsingHeader("First controller fight: actual decisions", ImGuiTreeNodeFlags_DefaultOpen)) {
                         ImGui::TextWrapped("APL recommendations below are at the controller's states, not moves from a separate baseline fight.");
                         ImGui::TextWrapped("Highlighted rows differ from the APL: cyan is executed, amber is recommended. A difference does not necessarily mean an improvement.");
-                        if (ImGui::BeginTable("policy_actual_decisions", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(0, 220))) {
-                            ImGui::TableSetupColumn("Time"); ImGui::TableSetupColumn("Mana");
-                            ImGui::TableSetupColumn("Executed action"); ImGui::TableSetupColumn("APL would choose here");
+                        if (ImGui::BeginTable("policy_actual_decisions", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable)) {
+                            ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+                            ImGui::TableSetupColumn("Mana", ImGuiTableColumnFlags_WidthFixed, 65.0f);
+                            ImGui::TableSetupColumn("Executed action", ImGuiTableColumnFlags_WidthStretch);
+                            ImGui::TableSetupColumn("APL would choose here", ImGuiTableColumnFlags_WidthStretch);
                             ImGui::TableHeadersRow();
                             for (const auto& item : analysis["timeline"]) {
                                 // Action zero delegates to the APL rather than overriding it.
@@ -844,7 +1147,7 @@ static int gui(Options options) {
         if (pending && !busy) {
             // Finish the one announcement frame BEFORE launching the Vulkan worker.
             glFinish();
-            submittedRequest.presentation = options.computePriority && !(submittedRequest.mode == "policy_benchmark" && submittedRequest.benchmarkAlgo == 1) ? "rendering-paused" : "visible-10hz";
+            submittedRequest.presentation = options.computePriority && !(submittedRequest.mode == "policy_benchmark" && submittedRequest.benchmarkAlgo >= 1) ? "rendering-paused" : "visible-10hz";
             try {
                 detailedView.clear(); histograms.clear(); histogramCandidate = 0; histogramError.clear();
                 job.start(submittedRequest); reported = false; framesDuringJobs = 0; error.clear();

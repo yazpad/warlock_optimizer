@@ -34,13 +34,14 @@ export function validateTalents(talents) {
 }
 export function resolveCandidate(c) {
  check(c?.schemaVersion===1 && c.classId==='warlock','Unsupported candidate format');
- check(Object.keys(c).every(k=>['schemaVersion','classId','candidateId','autoCooldowns','importDiagnostics','encounter','stats','equipment','buffs','talents','apl','classOptions','sourceSettings','externalElements','assignedElements','demonicRune','ezThroDynamite','manualTrinket','channelClipDelayMs','book','trinketSP','trinketDuration','trinketCD'].includes(k)),'Unsupported candidate field');
+ check(Object.keys(c).every(k=>['schemaVersion','classId','candidateId','autoCooldowns','importDiagnostics','importWarnings','encounter','stats','equipment','buffs','talents','apl','classOptions','sourceSettings','externalElements','assignedElements','demonicRune','ezThroDynamite','manualTrinket','channelClipDelayMs','book','trinketSP','trinketDuration','trinketCD'].includes(k)),'Unsupported candidate field');
  check(Object.keys(c.classOptions).every(k=>['race','pet','sacrifice','rotation'].includes(k)),'Unsupported class option');
  check(Object.keys(c.encounter).every(k=>['duration','target'].includes(k)),'Unsupported encounter field');
  check(Object.keys(c.encounter.target).every(k=>['level','targetCount','targetHP','bossArmor','resistance','racialPolicy','targetIsBeast'].includes(k)),'Unsupported target setting');
  check(typeof c.candidateId==='string' && c.candidateId.length>0 && c.candidateId.length<=128,'Invalid candidate identity');
  check(typeof c.apl?.text==='string' && c.apl.text.length<=8192,'APL must be text, at most 8192 characters');
  check(!c.sourceSettings?.armor || c.sourceSettings.armor==='NoArmor','Armor effects are not supported');
+ check(!c.importWarnings || (Array.isArray(c.importWarnings) && c.importWarnings.every(w=>typeof w==='string')),'Invalid import warnings');
  check(!c.importDiagnostics?.length,'Import has unsupported APL: '+JSON.stringify(c.importDiagnostics));
  check(c.equipment?.mode==='direct' && !Object.keys(c.equipment.items).length,'Equipped gear is not supported yet; export direct bonus stats');
  validateTalents(c.talents);
@@ -131,40 +132,66 @@ export function importBuild(payload) {
    }
   }
  }
- check(!payload.player.rotation?.prepullActions?.length,'Prepull actions are not supported');
- check(!payload.player.itemSwap && !payload.player.cooldowns?.cooldowns?.length,'Item swaps and custom cooldown schedules are not supported');
+ const importWarnings=[];
+ const distanceFromTarget=payload.player.distanceFromTarget;
+ if(typeof distanceFromTarget==='number' && Number.isFinite(distanceFromTarget) && distanceFromTarget!==0)
+  importWarnings.push(`Export distance from target is ${distanceFromTarget} yd; this simulator assumes 0 yd.`);
+ const reactionTimeMs=payload.player.reactionTimeMs;
+ if(typeof reactionTimeMs==='number' && Number.isFinite(reactionTimeMs) && reactionTimeMs!==0)
+  importWarnings.push(`Export reaction time is ${reactionTimeMs} ms; this simulator assumes 0 ms.`);
+ const durationVariation=payload.encounter?.durationVariation;
+ if(typeof durationVariation==='number' && Number.isFinite(durationVariation) && durationVariation!==0)
+  importWarnings.push(`Export requests ${durationVariation} sec of encounter duration variation; this simulator uses the base duration only.`);
+ if(payload.raidBuffs?.graceOfAirTotem)
+  importWarnings.push('Export has Grace of Air Totem enabled; this simulator does not model that buff.');
+ if(payload.raidBuffs?.leaderOfThePack)
+  importWarnings.push('Export has Leader of the Pack enabled; this simulator does not model that buff.');
+ const prepullCount=payload.player.rotation?.prepullActions?.length||0;
+ if(prepullCount)importWarnings.push(`${prepullCount} prepull action${prepullCount===1?' was':'s were'} skipped; prepull actions are not simulated.`);
  const active=v=>Array.isArray(v)?v.some(active):v&&typeof v==='object'?Object.values(v).some(active):v!==null&&v!==undefined&&v!==false&&v!==0&&v!==''&&!['TristateEffectMissing','ProfessionUnknown'].includes(v);
+ const swap=payload.player.itemSwap;
+ const hasSwapItems=Array.isArray(swap?.items)&&swap.items.some(active);
+ const hasSwapStats=active(swap?.prepullBonusStats?.stats)||active(swap?.prepullBonusStats?.pseudoStats);
+ const hasCustomCooldowns=active(payload.player.cooldowns?.cooldowns);
+ check(!active(payload.player.enableItemSwap)&&!hasSwapItems&&!hasSwapStats&&!hasCustomCooldowns,'Item swaps and custom cooldown schedules are not supported');
  const audit=(value,allowed,label)=>{for(const [k,v] of Object.entries(value||{}))check(allowed.includes(k)||!active(v),'Unsupported '+label+': '+k);};
  audit(payload,['apiVersion','player','raidBuffs','partyBuffs','debuffs','encounter','simOptions','tanks','targetDummies'], 'export field');
- audit(payload.raidBuffs,['arcaneBrilliance','giftOfTheWild','prayerOfFortitude','prayerOfSpirit','moonkinAura'],'raid buff');
+ audit(payload.raidBuffs,['arcaneBrilliance','giftOfTheWild','prayerOfFortitude','prayerOfSpirit','moonkinAura','graceOfAirTotem','leaderOfThePack'],'raid buff');
  audit(payload.partyBuffs,['manaSpringTotem'],'party buff');
  audit(payload.debuffs,['judgementOfWisdom','sunderArmor','exposeArmor','faerieFire','giftOfArthas','curseOfElements','curseOfShadow','shadowWeaving','improvedScorch'],'debuff');
  audit(payload.player.buffs,['greaterBlessingOfKings','blessingOfKings','greaterBlessingOfWisdom','blessingOfWisdom','rallyingCryOfTheDragonslayer','songflowerSerenade','warchiefsBlessing','spiritOfZandalar','saygesFortune'],'player buff');
- audit(payload.player,['apiVersion','name','race','class','consumables','buffs','warlock','talentsString','profession1','profession2','rotation','bonusStats','equipment','channelClipDelayMs','enableItemSwap','itemSwap','cooldowns'],'player field');
+ audit(payload.player,['apiVersion','name','race','class','consumables','buffs','warlock','talentsString','profession1','profession2','rotation','bonusStats','equipment','channelClipDelayMs','enableItemSwap','itemSwap','cooldowns','distanceFromTarget','reactionTimeMs'],'player field');
  check(['RaceHuman','RaceGnome','RaceOrc','RaceUndead','RaceTroll'].includes(payload.player.race),'Unsupported export race');
  const options=payload.player.warlock?.options?.classOptions||{};
  audit(options,['summon','armor','curseOptions','sacrificedDemon','soulShards'],'class option');
- check(!options.armor||options.armor==='NoArmor','Armor effects are not supported by this importer');
+ if(options.armor==='DemonArmor')importWarnings.push('Export uses Demon Armor; its armor and health-regeneration effects are not modeled and will be ignored.');
+ check(!options.armor||options.armor==='NoArmor'||options.armor==='DemonArmor','Unsupported armor effect: '+options.armor);
  check(!options.summon||['NoSummon','Imp','Succubus'].includes(options.summon),'Unsupported summon');
  check(!options.sacrificedDemon||['NoSummon','Imp','Succubus'].includes(options.sacrificedDemon),'Unsupported sacrificed demon');
  check(!options.curseOptions||['NoCurse','Elements'].includes(options.curseOptions),'Unsupported assigned curse');
  const consumes=payload.player.consumables||{};
  audit(consumes,['flaskId','foodId','conjuredId','mhImbueId','offensivePotId','explosiveId','shadowPowerElixir','greaterFirepowerElixir','wizardOil','magebloodElixir'],'consumable');
  for(const [key,ids] of Object.entries({flaskId:[0,13512],foodId:[0,13931],conjuredId:[0,12662],mhImbueId:[0,20749],offensivePotId:[0,250937,9155,9264,21546],explosiveId:[0,18588]}))check(consumes[key]==null||ids.includes(consumes[key]),'Unsupported consumable: '+key);
- check(!payload.encounter?.durationVariation && !payload.encounter?.useHealth,'Variable-duration encounters are unsupported');
+ check(!payload.encounter?.useHealth,'Health-based encounter termination is unsupported');
  check(!payload.encounter?.targets || payload.encounter.targets.length===1,'Only one target is supported');
  check(!payload.encounter?.targets?.[0]?.level || payload.encounter.targets[0].level===63,'Only level-63 targets are supported');
  for(const container of [payload.raidBuffs,payload.player.buffs,payload.debuffs])for(const [key,value] of Object.entries(container||{}))if(active(value))check(typeof value==='boolean','Unsupported buff encoding: '+key);
  check(!payload.partyBuffs?.manaSpringTotem||['TristateEffectMissing','TristateEffectRegular','TristateEffectImproved',0,1,2].includes(payload.partyBuffs.manaSpringTotem),'Unsupported Mana Spring encoding');
  const build=structuredClone(payload);
  const c=convertForeverBuildToCandidate(build);
+ if(options.armor==='DemonArmor')c.sourceSettings.armor='NoArmor';
+ c.importWarnings=[...(c.importWarnings||[]),...importWarnings];
  c.equipment = { mode: 'direct', items: {} };
  if (equippedTrinketSP && !c.trinketSP) {
   c.trinketSP = equippedTrinketSP;
   c.trinketDuration = equippedTrinketDuration;
   c.trinketCD = equippedTrinketCD;
  }
- check(c.apl?.text,'No supported APL found');
+ if(!c.apl?.text){
+  if(payload.player.rotation?.type==='TypeAuto')
+   check(false,'This export uses TypeAuto and does not include an explicit APL. In WoWSims, open Rotation, select an APL instead of Auto, then export and import again.');
+  check(false,'No supported APL was found. In WoWSims, select an explicit APL before exporting, then import again.');
+ }
  resolveCandidate(c);
  return c;
 }

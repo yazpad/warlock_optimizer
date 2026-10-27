@@ -21,6 +21,8 @@ private:
     nlohmann::json catalog_, candidate_, rows_;
     std::vector<char> import_, apl_;
     std::string message_;
+    std::string importFeedback_;
+    bool importFeedbackSuccess_ = false;
     std::string validationError_;
     std::string importedLink_;
     std::string importedSourceTitle_;

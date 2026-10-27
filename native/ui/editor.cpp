@@ -74,6 +74,10 @@ Editor::~Editor() { for (const auto& entry : icons_) glDeleteTextures(1, &entry.
 bool Editor::importFromText(const std::string& text) {
     if (text.empty()) return false;
     try {
+        const auto first = text.find_first_not_of(" \t\r\n");
+        if (first != std::string::npos && (text.compare(first, 7, "http://") == 0 || text.compare(first, 8, "https://") == 0)) {
+            throw std::runtime_error("This looks like a WoWSims profile link. Import a JSON export; compressed profile links are unsupported.");
+        }
         const auto parsed = Json::parse(text);
         const auto value = editorCommand(root_, "import", parsed);
         load(value);
@@ -101,19 +105,26 @@ bool Editor::importFromText(const std::string& text) {
     }
 }
 bool Editor::handleDropFile(const char* path) {
-    if (!path) return false;
+    importFeedbackSuccess_ = false;
+    if (!path || !path[0]) { importFeedback_ = "No file path received from the drop."; return false; }
     try {
         std::ifstream file(path);
-        if (!file) return false;
+        if (!file) { importFeedback_ = "Could not open the dropped file."; return false; }
         std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        return importFromText(content);
-    } catch (...) {
+        importFeedbackSuccess_ = importFromText(content);
+        importFeedback_ = importFeedbackSuccess_ ? "Imported dropped JSON export." : message_;
+        return importFeedbackSuccess_;
+    } catch (const std::exception& e) {
+        importFeedback_ = e.what();
         return false;
     }
 }
 bool Editor::handleDropText(const char* text) {
-    if (!text) return false;
-    return importFromText(text);
+    importFeedbackSuccess_ = false;
+    if (!text || !text[0]) { importFeedback_ = "No text received from the drop."; return false; }
+    importFeedbackSuccess_ = importFromText(text);
+    importFeedback_ = importFeedbackSuccess_ ? "Imported dropped JSON export." : message_;
+    return importFeedbackSuccess_;
 }
 void Editor::load(const Json& candidate) {
     const auto text = candidate.at("apl").at("text").get<std::string>(); if (text.size() >= apl_.size()) throw std::runtime_error("APL exceeds 8192 bytes");
@@ -203,6 +214,7 @@ void Editor::draw(bool disabled) {
                 message_.clear();
                 importedLink_.clear();
                 importedSourceTitle_.clear();
+                importFeedback_.clear();
             }
         }
         ImGui::EndCombo();
@@ -219,10 +231,13 @@ void Editor::draw(bool disabled) {
 
     // Drop Box / Import Target
     const float dropBoxHeight = 50.0f;
+    // Leave a small inset at the right edge so the import target stays inside
+    // the left pane when its vertical scrollbar appears during layout.
+    const float dropBoxWidth = std::max(0.0f, availWidth - 8.0f);
     const ImVec2 dropMin = ImGui::GetCursorScreenPos();
-    const ImVec2 dropMax = ImVec2(dropMin.x + availWidth, dropMin.y + dropBoxHeight);
+    const ImVec2 dropMax = ImVec2(dropMin.x + dropBoxWidth, dropMin.y + dropBoxHeight);
 
-    ImGui::InvisibleButton("##import_drop_zone", ImVec2(availWidth, dropBoxHeight));
+    ImGui::InvisibleButton("##import_drop_zone", ImVec2(dropBoxWidth, dropBoxHeight));
     const bool isDropHovered = ImGui::IsItemHovered();
     const bool isDropClicked = ImGui::IsItemClicked();
 
@@ -245,18 +260,35 @@ void Editor::draw(bool disabled) {
     fgDraw->AddRectFilled(dropMin, dropMax, bgCol, 6.0f);
     drawDashedRect(fgDraw, dropMin, dropMax, borderCol, 6.0f, 4.0f, isDropHovered ? 1.5f : 1.0f);
 
-    const char* dropText1 = "Drag & drop or click to import wowsims configuration";
-    const char* dropText2 = "(Accepts JSON file drops, raw text drops, or clipboard click)";
+    const char* dropText1 = "Drop a WoWSims JSON export or click to paste JSON";
+    const char* dropText2 = "(Forever / Classic apiVersion 2 JSON export)";
     const ImVec2 size1 = ImGui::CalcTextSize(dropText1);
     const ImVec2 size2 = ImGui::CalcTextSize(dropText2);
 
-    const float text1X = dropMin.x + (availWidth - size1.x) * 0.5f;
+    const float text1X = dropMin.x + (dropBoxWidth - size1.x) * 0.5f;
     const float text1Y = dropMin.y + 7.0f;
-    const float text2X = dropMin.x + (availWidth - size2.x) * 0.5f;
+    const float text2X = dropMin.x + (dropBoxWidth - size2.x) * 0.5f;
     const float text2Y = dropMin.y + 27.0f;
 
     fgDraw->AddText(ImVec2(text1X, text1Y), isDropHovered ? IM_COL32(230, 240, 255, 255) : IM_COL32(180, 195, 220, 255), dropText1);
     fgDraw->AddText(ImVec2(text2X, text2Y), IM_COL32(120, 135, 160, 220), dropText2);
+
+    if (!importFeedback_.empty()) {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, importFeedbackSuccess_ ? ImVec4(0.45f, 0.85f, 0.58f, 1.0f) : ImVec4(0.95f, 0.55f, 0.42f, 1.0f));
+        ImGui::TextWrapped("%s", importFeedback_.c_str());
+        ImGui::PopStyleColor();
+    }
+    if (candidate_.contains("importWarnings") && candidate_["importWarnings"].is_array() && !candidate_["importWarnings"].empty()) {
+        ImGui::Spacing();
+        ImGui::TextDisabled("Import warnings");
+        for (const auto& warning : candidate_["importWarnings"]) {
+            if (!warning.is_string()) continue;
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.30f, 1.0f));
+            ImGui::BulletText("%s", warning.get_ref<const std::string&>().c_str());
+            ImGui::PopStyleColor();
+        }
+    }
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -296,9 +328,13 @@ void Editor::draw(bool disabled) {
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.25f, 0.35f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.30f, 0.38f, 0.50f, 1.0f));
 
-        ImTextureID curTex = curItem ? getTex(curItem->icon) : 0;
+        const bool isNone = curItem && curItem->value == "none";
+        ImTextureID curTex = curItem && !isNone ? getTex(curItem->icon) : 0;
         std::string btnId = std::string("##btn_") + id;
-        if (ImGui::ImageButton(btnId.c_str(), curTex, ImVec2(iconSize, iconSize))) {
+        const bool clicked = isNone
+            ? ImGui::Button(btnId.c_str(), ImVec2(iconSize + 4.0f, iconSize + 4.0f))
+            : ImGui::ImageButton(btnId.c_str(), curTex, ImVec2(iconSize, iconSize));
+        if (clicked) {
             ImGui::OpenPopup(id);
         }
 
@@ -306,6 +342,10 @@ void Editor::draw(bool disabled) {
         ImDrawList* draw = ImGui::GetWindowDrawList();
         ImVec2 pMin = ImGui::GetItemRectMin();
         ImVec2 pMax = ImGui::GetItemRectMax();
+        if (isNone) {
+            draw->AddRectFilled(ImVec2(pMin.x + 5.0f, pMin.y + 5.0f), ImVec2(pMax.x - 5.0f, pMax.y - 5.0f), IM_COL32(42, 46, 54, 255), 2.0f);
+            draw->AddRect(ImVec2(pMin.x + 5.0f, pMin.y + 5.0f), ImVec2(pMax.x - 5.0f, pMax.y - 5.0f), IM_COL32(75, 82, 95, 210), 2.0f, 0, 1.0f);
+        }
         draw->AddRect(pMin, pMax, IM_COL32(180, 150, 70, 220), 3.0f, 0, 1.5f);
 
         if (ImGui::IsItemHovered() && curItem) {
@@ -328,7 +368,13 @@ void Editor::draw(bool disabled) {
                     dirty_ = true;
                 }
                 ImGui::SameLine(6.0f);
-                if (tex) {
+                if (item.value == "none") {
+                    const ImVec2 squareMin = ImGui::GetCursorScreenPos();
+                    ImGui::Dummy(ImVec2(22, 22));
+                    ImGui::GetWindowDrawList()->AddRectFilled(squareMin, ImVec2(squareMin.x + 22, squareMin.y + 22), IM_COL32(42, 46, 54, 255), 2.0f);
+                    ImGui::GetWindowDrawList()->AddRect(squareMin, ImVec2(squareMin.x + 22, squareMin.y + 22), IM_COL32(75, 82, 95, 210), 2.0f);
+                    ImGui::SameLine();
+                } else if (tex) {
                     ImGui::Image(tex, ImVec2(22, 22));
                     ImGui::SameLine();
                 }
@@ -403,7 +449,7 @@ void Editor::draw(bool disabled) {
     ImGui::PopStyleColor();
     ImGui::Spacing();
 
-    if (ImGui::CollapsingHeader("Talents", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Talents")) {
         const char* treeKeys[] = {"affliction", "demonology", "destruction"};
         const char* treeNames[] = {"Affliction", "Demonology", "Destruction"};
 
@@ -610,7 +656,7 @@ void Editor::draw(bool disabled) {
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(7, 4));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 5));
 
-    if (ImGui::CollapsingHeader("Action Priority List (APL)", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Action Priority List (APL)")) {
         // Fallback rotation text selector inline above editor
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("Fallback filler rotation:");

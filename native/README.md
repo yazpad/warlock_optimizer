@@ -189,11 +189,17 @@ The default is a **batched one-action comparison with APL continuation to the
 fight end**: analyze up to 128 eligible decisions, evaluate every supported legal
 first action with 1,000 paired future samples, then run the current APL to terminal.
 Different root/action/sample combinations share dispatches of up to 65,536 fights.
-The initial capture uses a trace buffer; rollouts return only 32 words (128 bytes),
-including completion time, root context, and total Doom damage. Each returned fight
+The initial capture uses a trace buffer; regret rollouts return 195 words,
+including completion time, root context, total Doom damage, and the 163-word
+detailed report. Detailed instrumentation is isolated from the normal fast runner. Each returned fight
 must be complete at the configured encounter end. A zero regret means the taken
 action matched the best alternative; it does not mean the spell dealt zero damage.
-The inspector separately shows average Doom damage when evaluating Doom.
+Each Inspect button opens a comparison window with a selectable alternative.
+It shows paired full-fight averages and alternative-minus-taken differences for
+spell and pet damage, DPS, casts, hits, crits, misses, ticks, effect uptime in
+seconds and percent, and mana spent, gained, wasted, remaining, and Life Taps.
+These totals include the shared fight prefix; differences reflect the changed
+continuation. Saved analyses without detailed reports prompt a fresh analysis.
 
 Plan depth greater than 1 enables CPU **open-loop MCTS / UCT with GPU batched
 rollouts**. Nodes are action sequences, not observation-conditioned policies.
@@ -318,3 +324,25 @@ paired interval and training throughput. It reports each evolution seed separate
 the runs share evaluation seeds and must not be pooled as independent fight pairs.
 Training curves also report counts of improved/equal-fitness candidates (equal
 fitness does not imply identical actions).
+
+### On-demand regret decision traces
+
+Click **Trace why** in Decision inspection to replay the selected plans on 64 fresh
+paired futures. Normal analysis does not collect traces.
+
+Contributors are ranked by absolute DPS change. Select a spell to inspect its
+casts, ticks, hits, crits, uptime, decision checks, and cast timing. Timing includes
+effect time remaining, spell power, haste, and the other branch's last decision.
+Pet damage shows aggregate changes; player action checks do not apply.
+
+The example is the median DPS difference across all pairs. Observed timing and
+state changes are evidence, not proof of a unique cause. Shared seeds can consume
+random draws differently after the branches diverge.
+
+Traces are included in copied/saved logs. Older traces require a refresh. Original
+suite/kernel identity, root context, legality, and traced/detailed replay parity are
+checked before results are accepted.
+
+`node validation/regret.mjs` tests the complete job path and snapshot rejection.
+`validation/regret_trace.lua` tests generic checks, DoT contributors, pet fallback,
+clock-time alignment, and example selection.

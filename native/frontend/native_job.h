@@ -28,6 +28,7 @@ struct JobRequest {
     uint32_t regretSamples = 16;
     uint32_t regretValidation = 1000;
     uint32_t regretDepth = 1;
+    std::string regretTraceSource; // Selected saved decision/plans; empty means ordinary analysis.
     uint32_t benchmarkTrials = 8; // Complete matched fight pairs for the online controller.
     uint32_t benchmarkSeedStart = 0; // Choose a fresh evaluation range after tuning.
     float benchmarkLearningRate = 2.0f;

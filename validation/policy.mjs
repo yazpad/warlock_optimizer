@@ -9,7 +9,8 @@ const core=['sim/classes/warlock/generated/fast.glsl','tools/run_native.lua','to
 const hash=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const before=core.map(hash);
 const neural=process.argv.includes('--neuroevolution');
-const fights=neural?2048:2;
+const ppo=process.argv.includes('--ppo');
+const fights=(neural||ppo)?2048:2;
 const dir=fs.mkdtempSync(path.resolve('artifacts/policy-validation-'));
 const candidate=structuredClone(catalog().presets[0].candidate);
 candidate.encounter.duration=5;
@@ -17,8 +18,9 @@ const candidatePath=path.join(dir,'candidate.json');
 fs.writeFileSync(candidatePath,JSON.stringify(candidate));
 const output=path.join(dir,'complete');
 const run=spawnSync('artifacts/imgui-build/fastsim-imgui',[
-  '--headless','--policy-benchmark',...(neural?[]:['--policy-fights','2']),'--policy-puct','1.5','--policy-seed-start','128',
+  '--headless','--policy-benchmark',...(neural||ppo?[]:['--policy-fights','2']),'--policy-puct','1.5','--policy-seed-start','128',
   ...(neural ? ['--policy-algorithm','neuroevolution','--evolution-generations','2','--evolution-population','3'] : []),
+  ...(ppo ? ['--policy-algorithm','ppo','--evolution-generations','2','--evolution-population','4','--evolution-sigma','0.003'] : []),
   '--candidate',candidatePath,'--allow-software','--output-dir',output
 ],{encoding:'utf8',timeout:360000});
 assert.equal(run.status,0,run.stdout+run.stderr);
@@ -30,20 +32,25 @@ assert(!summary.medians && summary.runs.length===0,'Online search must not publi
 const a=summary.analysis;
 assert.equal(a.schemaVersion,2);
 assert.equal(a.evaluationScope,'complete_fights');
-assert.equal(a.policyType,neural ? 'neuroevolution_mlp' : 'receding_horizon_mcts');
-if(neural) {
+assert.equal(a.policyType,ppo ? 'ppo_mlp' : (neural ? 'neuroevolution_mlp' : 'receding_horizon_mcts'));
+if(neural||ppo) {
   assert.equal(a.network.weights.length,1250);
   assert.equal(a.trainingCurve.length,3);
   assert.equal(a.totalSearches,0);
   assert.equal(a.inferenceBackend,'batched_gpu_full_fights');
-  assert.equal(a.timing.neuralDispatches,7,'Batched training/evaluation plus one displayed trace');
-  assert.equal(a.timing.trainingPolicyFights,5000,'Elite fitness must be cached');
-  assert.equal(a.timing.dispatches,7,'Held-out APL checks are batched');
-  assert.equal(a.timing.neuralFullFights,6000+2*fights+1);
+  if(neural) {
+    assert.equal(a.timing.neuralDispatches,7,'Batched training/evaluation plus one displayed trace');
+    assert.equal(a.timing.trainingPolicyFights,5000,'Elite fitness must be cached');
+    assert.equal(a.timing.dispatches,7,'Held-out APL checks are batched');
+    assert.equal(a.timing.neuralFullFights,6000+2*fights+1);
+    assert.equal(a.timing.neuralMeasuredFights,5000+2*fights+1);
+  } else {
+    assert.equal(a.timing.neuralDispatches,8,'PPO rollout + cohort evaluation per iteration plus held-out evaluation and trace');
+    assert.equal(a.timing.trainingPolicyFights,2*(4+6000));
+  }
   assert(a.timing.neuralFightsPerSecond>0);
   assert.equal(a.timing.neuralBatchCapacity,32768);
   assert(a.timing.neuralMeasuredGpuMs>=0);
-  assert.equal(a.timing.neuralMeasuredFights,5000+2*fights+1);
   assert(a.timing.setupMs>=a.timing.neuralStartupWallMs);
   assert.equal(a.trainingSeeds.length,1000);
   assert.equal(new Set(a.trainingSeeds).size,1000);
@@ -53,7 +60,7 @@ if(neural) {
     assert.equal(p.generation,i);
     assert.equal(p.trainingFights,1000);
     assert(p.generationWorstDps<=p.generationMeanDps && p.generationMeanDps<=p.generationBestDps);
-    assert.equal(p.candidateDps.length,i===0?1:2);
+    assert.equal(p.candidateDps.length,neural?(i===0?1:2):(i===0?1:6));
     assert(p.policyDps>=p.generationBestDps);
     assert(p.baselineDps>0 && Number.isFinite(p.policyDps));
     if(i) assert(p.policyDps>=a.trainingCurve[i-1].policyDps);
@@ -87,7 +94,7 @@ for(const [i,move] of a.timeline.entries()) {
   assert.equal(move.signature.length,2);
   if(i)assert(move.time>=a.timeline[i-1].time);
 }
-assert((neural ? a.timing.searchRolloutFights===0 : a.timing.searchRolloutFights>0) && a.timing.dispatches>0 && a.timing.totalWallMs>=a.timing.evaluationWallMs);
+assert(((neural||ppo) ? a.timing.searchRolloutFights===0 : a.timing.searchRolloutFights>0) && a.timing.dispatches>0 && a.timing.totalWallMs>=a.timing.evaluationWallMs);
 assert(!fs.existsSync(path.join(output,'work-1')),'Completed policy work must be cleaned up');
 assert(core.every((p,i)=>hash(p)===before[i]),'Production compute sources changed');
 console.log('PASS: full policy UI worker path, complete fight pairs, exact APL replay, paired statistics, actual timeline, search cost and unchanged core');

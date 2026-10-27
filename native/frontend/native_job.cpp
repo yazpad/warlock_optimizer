@@ -105,7 +105,8 @@ void NativeJob::publishLine(const std::string& line) {
         auto point = nlohmann::json::parse(line.substr(16), nullptr, false);
         if (!point.is_discarded() && point.is_object() && point.contains("generation") && point.contains("baselineDps") && point.contains("policyDps")) {
             state_.trainingCurve.push_back(point);
-            state_.phase = "Neuroevolution / generation " + point.at("generation").dump();
+            const char* label = point.contains("policyLoss") ? "PPO / iteration " : "Neuroevolution / generation ";
+            state_.phase = label + point.at("generation").dump();
         }
     }
     unsigned completed = 0, total = 0;
@@ -133,9 +134,9 @@ void NativeJob::start(const JobRequest& input) {
     if (request.mode != "policy_benchmark") require(request.totalFights % candidates == 0 && request.totalFights / candidates >= 2 && request.totalFights / candidates <= 1048576 && request.totalFights <= 16777216, "Invalid fight count for selected candidates");
     require(request.mode == "fast" || request.mode == "detailed" || request.mode == "regret" || request.mode == "policy_benchmark", "Invalid simulation mode");
     if (request.mode == "policy_benchmark") {
-        require(request.benchmarkAlgo <= 1 && request.evolutionGenerations >= 1 && request.evolutionGenerations <= 16384 &&
+        require(request.benchmarkAlgo <= 2 && request.evolutionGenerations >= 1 && request.evolutionGenerations <= 16384 &&
             request.evolutionPopulation >= 2 && request.evolutionPopulation <= 64 && request.evolutionSeed >= 1 && request.evolutionSeed <= 2147483646 &&
-            std::isfinite(request.evolutionSigma) && request.evolutionSigma > 0 && request.evolutionSigma <= 2 && request.benchmarkTrials >= 2 && request.benchmarkTrials <= (request.benchmarkAlgo == 1 ? 8192u : 64u) && request.benchmarkSeedStart <= 65535 &&
+            std::isfinite(request.evolutionSigma) && request.evolutionSigma > 0 && request.evolutionSigma <= 2 && request.benchmarkTrials >= 2 && request.benchmarkTrials <= (request.benchmarkAlgo >= 1 ? 8192u : 64u) && request.benchmarkSeedStart <= 65535 &&
             request.benchmarkSeedStart + request.benchmarkTrials <= 65536 &&
             std::isfinite(request.benchmarkLearningRate) && request.benchmarkLearningRate >= 0 && request.benchmarkLearningRate <= 100,
             "Invalid policy benchmark settings");
@@ -147,6 +148,12 @@ void NativeJob::start(const JobRequest& input) {
             request.regretRounds >= 1 && request.regretRounds <= 256 && request.regretSamples >= 2 && request.regretSamples <= 256 &&
             request.regretValidation >= 2 && request.regretValidation <= 4096 && request.regretDepth >= 1 && request.regretDepth <= 4,
             "Invalid regret search budget");
+    }
+    if (!request.regretTraceSource.empty()) {
+        require(request.mode == "regret" && request.regretTraceSource.size() <= 1048576, "Invalid trace request");
+        const auto trace = Json::parse(request.regretTraceSource);
+        require(trace.at("decision").is_number_unsigned() && trace.at("decision").get<unsigned>() < 1024 &&
+            trace.at("suiteHash").is_string() && trace.at("takenPlan").is_string() && trace.at("alternativePlan").is_string(), "Invalid trace selection");
     }
     require(request.batchSize >= 1 && request.batchSize <= 65536 && request.warmupBatches <= 32 && request.runs >= 1 && request.runs <= 10, "Invalid batch/warmup/run settings");
     require(!request.wave32 || request.specialized, "Current native CLI requires specialization for wave32");
@@ -198,7 +205,7 @@ void NativeJob::execute(JobRequest request) {
                     "--samples", "8",
                     "--c-puct", std::to_string(request.benchmarkLearningRate),
                     "--apl-weight", "0.70",
-                    "--algorithm", request.benchmarkAlgo == 1 ? "neuroevolution" : "mcts",
+                    "--algorithm", request.benchmarkAlgo == 2 ? "ppo" : (request.benchmarkAlgo == 1 ? "neuroevolution" : "mcts"),
                     "--generations", std::to_string(request.evolutionGenerations),
                     "--population", std::to_string(request.evolutionPopulation),
                     "--mutation-sigma", std::to_string(request.evolutionSigma),
@@ -211,6 +218,12 @@ void NativeJob::execute(JobRequest request) {
                     "--regret-samples", std::to_string(request.regretSamples),
                     "--regret-validation", std::to_string(request.regretValidation),
                     "--regret-depth", std::to_string(request.regretDepth)};
+                if (!request.regretTraceSource.empty()) {
+                    const auto path = request.outputDirectory / "trace-request.json";
+                    std::ofstream file(path); file << request.regretTraceSource;
+                    require(bool(file), "Cannot save trace request"); file.close();
+                    command.push_back("--trace-request"); command.push_back(path.string());
+                }
             } else {
                 command = runner_;
             }
@@ -280,12 +293,25 @@ void NativeJob::execute(JobRequest request) {
                 if (!request.suiteSource.empty()) require(result.at("suiteHash") == request.suiteHash, "Diagnostic suite snapshot mismatch");
                 if (request.mode == "regret") {
                     require(result.at("rows").is_array() && result.at("rows").size() <= request.regretDecisions, "Invalid regret rows");
+                    if (!request.regretTraceSource.empty()) {
+                        const auto expected = Json::parse(request.regretTraceSource);
+                        const auto& trace = result.at("trace");
+                        require(trace.at("schemaVersion") == 2 && trace.at("drivers").is_array() && trace.at("decision") == expected.at("decision") && trace.at("takenPlan") == expected.at("takenPlan") &&
+                            trace.at("alternativePlan") == expected.at("alternativePlan") && trace.at("samples") == 64 &&
+                            trace.at("instrumentationVerified") == true && result.at("terminalVerified") == true &&
+                            result.at("suiteHash") == expected.at("suiteHash"), "Trace identity or replay mismatch");
+                        diagnosticDelta(trace, "dpsDelta"); numeric(trace, "standardError");
+                        require(trace.at("outcomes").is_array() && trace.at("outcomes").size() == 64 &&
+                            trace.at("example").at("taken").at("timeline").is_array() &&
+                            trace.at("example").at("alternative").at("timeline").is_array(), "Incomplete paired trace");
+                    } else require(!result.contains("trace"), "Unexpected trace result");
                     for (const auto& row : result.at("rows")) {
                         numeric(row, "time"); numeric(row, "dpsDelta"); numeric(row, "standardError");
                         require(row.at("samples") == request.regretValidation, "Regret sample count mismatch");
                     }
                 } else {
-                    require(result.at("evaluationScope") == "complete_fights" && result.at("policyType") == (request.benchmarkAlgo == 1 ? "neuroevolution_mlp" : "receding_horizon_mcts") &&
+                    const char* expectedPolicyType = request.benchmarkAlgo == 2 ? "ppo_mlp" : (request.benchmarkAlgo == 1 ? "neuroevolution_mlp" : "receding_horizon_mcts");
+                    require(result.at("evaluationScope") == "complete_fights" && result.at("policyType") == expectedPolicyType &&
                         result.at("terminalVerified") == true && result.at("optimalityGuaranteed") == false &&
                         result.at("results").is_array() && result.at("results").size() == request.benchmarkTrials &&
                         result.at("completedFightPairs") == request.benchmarkTrials, "Invalid complete-policy result scope/count");
@@ -299,7 +325,7 @@ void NativeJob::execute(JobRequest request) {
                         settings.at("depth") == 3 && settings.at("samples") == 8 && settings.at("evaluationStart") == request.benchmarkSeedStart &&
                         std::abs(settings.at("cPuct").get<double>() - request.benchmarkLearningRate) <= 1e-5,
                         "Invalid policy controller settings");
-                    if (request.benchmarkAlgo == 1) {
+                    if (request.benchmarkAlgo >= 1) {
                         require(settings.at("generations") == request.evolutionGenerations && settings.at("population") == request.evolutionPopulation &&
                             settings.at("evolutionSeed") == request.evolutionSeed && std::abs(settings.at("mutationSigma").get<double>() - request.evolutionSigma) < 1e-5 &&
                             result.at("totalSearches") == 0 && result.at("actionSelection") == "masked_mlp_argmax" &&
@@ -308,7 +334,7 @@ void NativeJob::execute(JobRequest request) {
                             result.at("trainingCurve").size() == request.evolutionGenerations + 1 && result.at("network").at("version") == 2 &&
                             result.at("network").at("inputs") == 75 && result.at("network").at("hidden") == 12 &&
                             result.at("network").at("outputs") == 26 && result.at("network").at("weights").size() == 1250,
-                            "Invalid neuroevolution result");
+                            "Invalid neural policy result");
                         uint32_t generation = 0;
                         for (const auto& point : result.at("trainingCurve")) {
                             require(point.at("generation") == generation++, "Invalid training generation");

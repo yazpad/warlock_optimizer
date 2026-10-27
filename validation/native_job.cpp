@@ -207,7 +207,7 @@ output:write(bytes); output:close()
                 bool rejected = false; try { NativeJob worker; worker.start(overlap); } catch (...) { rejected = true; }
                 check(rejected, "Evaluation range overlapping neural training accepted");
             }
-            policy.benchmarkAlgo = 2;
+            policy.benchmarkAlgo = 3;
             bool rejected = false; try { NativeJob worker; worker.start(policy); } catch (...) { rejected = true; }
             check(rejected, "Unimplemented policy algorithm accepted");
         }
